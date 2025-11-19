@@ -1,0 +1,7 @@
+/ {
+
+};
+
+&green_led{
+    status = "okay";
+};

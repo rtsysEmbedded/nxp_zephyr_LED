@@ -1,0 +1,35 @@
+{
+  "version": 7,
+  "cmakeMinimumRequired": {
+    "major": 3
+  },
+  "configurePresets": [
+    {
+      "name": "debug-env",
+      "displayName": "debug-env",
+      "hidden": true,
+      "environment": {
+        "ZEPHYR_BASE": "/home/ubuntu/nxp_zephyr/zephyr",
+        "MCUX_VENV_PATH": "/home/ubuntu/.mcuxpressotools/.venv_3_12/bin",
+        "PATH": "$env{MCUX_VENV_PATH}${pathListSep}$penv{PATH}",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "EXTRA_DTC_OVERLAY_FILE": "${fileDir}/boards/frdm_mcxn947_mcxn947_cpu0.overlay"
+      },
+      "cacheVariables": {}
+    },
+    {
+      "name": "release-env",
+      "displayName": "release-env",
+      "hidden": true,
+      "environment": {
+        "ZEPHYR_BASE": "/home/ubuntu/nxp_zephyr/zephyr",
+        "MCUX_VENV_PATH": "/home/ubuntu/.mcuxpressotools/.venv_3_12/bin",
+        "PATH": "$env{MCUX_VENV_PATH}${pathListSep}$penv{PATH}",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "EXTRA_DTC_OVERLAY_FILE": "${fileDir}/boards/frdm_mcxn947_mcxn947_cpu0.overlay"
+      },
+      "cacheVariables": {}
+    }
+  ],
+  "buildPresets": []
+}
