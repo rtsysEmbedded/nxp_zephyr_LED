@@ -1,0 +1,55 @@
+{
+  "cmake.configureOnOpen": false,
+  "C_Cpp.errorSquiggles": "disabled",
+  "C_Cpp.files.exclude": {
+    "**/.vscode": true,
+    "**/__repo__": true
+  },
+  "C_Cpp.exclusionPolicy": "checkFolders",
+  "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
+  "cmake.useCMakePresets": "always",
+  "cmake.buildTask": true,
+  "cmake.skipConfigureIfCachePresent": true,
+  "cmake.sourceDirectory": "${workspaceFolder}",
+
+// Base folder for DeviceTree LSP
+  "devicetree.cwd": "/home/ubuntu/nxp_zephyr/zephyr",
+
+  // Default Zephyr binding type and paths
+  "devicetree.defaultBindingType": "Zephyr",
+  "devicetree.defaultZephyrBindings": [
+    "./dts/bindings"
+  ],
+
+  // Default include paths for Zephyr DTS files
+  "devicetree.defaultIncludePaths": [
+    "./include",
+    "./dts",
+    "./dts/common",
+    "./dts/arm",
+    "./dts/arm64",
+    "./dts/vendor",
+    "./dts/xtensa"
+  ],
+
+  // Project-specific context: DTS + overlay
+  "devicetree.contexts": [
+    {
+      "devicetree.cwd": "/home/ubuntu/NXP_Project/planet_controll",
+      "bindingType": "Zephyr",
+      "zephyrBindings": [
+        "/home/ubuntu/nxp_zephyr/zephyr/dts/bindings"
+      ],
+      "includePaths": [
+        "/home/ubuntu/nxp_zephyr/zephyr/dts",
+        "/home/ubuntu/nxp_zephyr/zephyr/dts/common",
+        "/home/ubuntu/nxp_zephyr/zephyr/dts/arm",
+        "/home/ubuntu/nxp_zephyr/zephyr/include"
+      ],
+      "dtsFile": "/home/ubuntu/nxp_zephyr/zephyr/boards/nxp/frdm_mcxn947/frdm_mcxn947_mcxn947_cpu0.dts",
+      "overlays": [
+        "/home/ubuntu/NXP_Project/planet_controll/boards/frdm_mcxn947_mcxn947_cpu0.overlay"
+      ]
+    }
+  ]
+}

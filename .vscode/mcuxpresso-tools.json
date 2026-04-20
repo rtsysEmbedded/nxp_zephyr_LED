@@ -1,0 +1,13 @@
+{
+  "version": "25.3",
+  "toolchainPath": "",
+  "linkedProjects": [],
+  "trustZoneType": "none",
+  "multicoreType": "none",
+  "projectType": "zephyr-freestanding",
+  "projectName": "planet_controll",
+  "sdk": {
+    "path": "/home/ubuntu/nxp_zephyr",
+    "version": "4.2.0"
+  }
+}
