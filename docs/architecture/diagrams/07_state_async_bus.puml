@@ -1,0 +1,56 @@
+@startuml 07_state_async_bus
+!include _style.iuml
+
+title ExpanderPort transfer engine - bare-metal asynchronous mode (UML state machine)
+
+[*] --> Uninitialised
+Uninitialised --> ApplyFailSafe : init()
+ApplyFailSafe : write OUTPUT = fail_safe levels
+ApplyFailSafe : then CONFIG (direction)
+ApplyFailSafe : order prevents output glitch
+ApplyFailSafe --> Idle : ok
+ApplyFailSafe --> Recovery : bus error
+
+Idle : shadow == hardware
+Idle --> Pending : write_masked() [main context]\n/ shadow_out, dirty |= mask
+
+Pending : changes merged in shadow
+Pending --> Pending : write_masked()\n(coalesced, no extra transfer)
+Pending --> Transferring : poll()\n[bus idle] / snapshot = shadow_out;\ndirty = 0; start non-blocking transfer
+
+Transferring : LPI2C non-blocking transfer in progress
+Transferring --> Transferring : write_masked() [main context]\n/ shadow_out, dirty |= mask
+Transferring --> Completed : completion ISR [status OK]\n/ xfer_status.store(Done)
+Transferring --> Recovery : completion ISR [NACK | timeout]\n/ xfer_status.store(Error)
+
+Completed --> Idle : poll() [dirty == 0]
+Completed --> Transferring : poll() [dirty != 0]\n/ new snapshot
+
+Recovery : bus recover(): 9 SCL clocks + STOP
+Recovery : retries < cfg.max_retries
+Recovery --> Resync : recovered
+Recovery --> Faulted : retries exhausted
+
+Resync : read OUTPUT + CONFIG back
+Resync : chip reset detected -> ApplyFailSafe
+Resync --> Pending : ok (dirty = all written bits)
+Resync --> ApplyFailSafe : reset detected
+
+Faulted : port reports Error::Io on every call
+Faulted : application decides (degrade / reset)
+Faulted --> Recovery : reset_port() by application
+
+note right of Transferring
+  Shared-state ownership (bare-metal):
+  - shadow_out, dirty: main context only
+    (write_masked, poll) -> no lock needed.
+  - xfer_status: written by completion ISR,
+    read by poll(); std::atomic<uint8_t>
+    store/load only -> lock-free on every
+    Cortex-M, including M0+.
+  Only poll() starts transfers; the ISR never
+  chains a transfer and never touches the shadow.
+  Expander writes from ISR are rejected
+  (Error::IsrContext).
+end note
+@enduml

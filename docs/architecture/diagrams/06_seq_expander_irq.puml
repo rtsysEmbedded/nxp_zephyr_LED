@@ -1,0 +1,56 @@
+@startuml 06_seq_expander_irq
+!include _style.iuml
+
+title Expander interrupt - ISR deferral and dispatch (per-platform mapping)
+
+autonumber
+participant "PCA9555\nINT (open-drain)" as chip
+participant "Native GPIO ISR\n(GPIOx IRQ)" as isr
+participant "osal::EventSignal" as sig
+participant "Event context\n(task / work item / poll)" as evt
+participant "ExpanderPort" as port
+participant "IBus" as bus
+participant "EventDispatcher" as disp
+participant "Observer callback" as cb
+
+chip -> isr : INT falling edge (native pin ICR = falling edge)
+activate isr
+isr -> isr : read + clear ISFR flag
+isr -> sig : raise_from_isr(port_bit)
+note right of isr
+  ISR does NO bus transfer and takes NO mutex.
+  Platform mapping of raise_from_isr():
+  - FreeRTOS: xTaskNotifyFromISR(eSetBits) + portYIELD_FROM_ISR
+  - Zephyr:   k_work_submit_to_queue(dedicated queue)
+  - Bare-metal: atomic OR into pending mask
+  - Linux: n/a (libgpiod edge-event thread is the event context)
+end note
+deactivate isr
+
+sig -> evt : wake (bits)
+activate evt
+evt -> port : service()
+loop while INT still asserted (bounded by cfg.irq_max_reads)
+  port -> port : ScopedLock(port mutex)
+  port -> bus : read_reg(INPUT0, 2 bytes)
+  note right of bus : reading INPUT releases INT on PCA95xx;\nMCP23x17 can read INTCAP instead
+  bus --> port : new_in
+  port -> port : changed = new_in ^ shadow_in\nshadow_in = new_in
+  port -> port : unlock
+  port -> disp : on_port_changed(port_id, changed, new_in)
+  disp -> disp : filter by subscribed mask + edge
+  disp -> cb : cb(ctx, PinEvent)
+  note right of cb
+    Called with NO library lock held.
+    Runs in event context: may block briefly,
+    may call OutputPin::set().
+  end note
+  port -> port : INT asserted? = native INT pin level (PDIR read)
+end
+note over port
+  Edge-triggered native IRQ + re-check of the INT level closes the
+  window where a change arrives during the read and INT never
+  produces a new falling edge.
+end note
+deactivate evt
+@enduml

@@ -1,0 +1,55 @@
+@startuml 05_seq_expander_write
+!include _style.iuml
+
+title Expander pin write - locking, commit and failure path (RTOS / Linux targets)
+
+autonumber
+participant "Application task" as app
+participant "OutputPin" as pin
+participant "ExpanderPort" as port
+participant "osal::Mutex\n(port)" as pm
+participant "IBus\n(e.g. McuxLpi2cBus)" as bus
+participant "osal::Mutex\n(bus)" as bm
+participant "PCA9555" as chip
+
+app -> pin : set(High)
+pin -> pin : value = active_low ? ~mask : mask
+pin -> port : write_masked(mask, value)
+
+alt osal::Context::in_isr() && caps().can_sleep
+  port --> pin : Error::IsrContext
+  pin --> app : Result{IsrContext}
+else task context
+  port -> pm : ScopedLock(timeout = cfg.port_lock_timeout)
+  alt !owns()
+    port --> app : Result{Timeout}
+  else lock held
+    port -> port : next = (shadow_out & ~mask) | (value & mask)
+    alt next == shadow_out
+      port --> app : Result{Ok} (no bus traffic)
+    else state changes
+    port -> bm : ScopedLock(timeout = cfg.bus_lock_timeout)
+    port -> bus : write_reg(OUTPUT0, {lo(next), hi(next)})
+    bus -> chip : I2C START, addr+W, reg, data0, data1, STOP
+    alt ACK
+      chip --> bus : ACK
+      bus --> port : Ok
+      port -> port : shadow_out = next (commit only after HW accepted)
+      port --> app : Result{Ok}
+    else NACK / timeout / arbitration lost
+      bus --> port : Error::Io
+      port -> port : resync_needed = true
+      port --> app : Result{Io}
+      note over port
+        Shadow is NOT updated: it must never claim
+        a state the chip does not have.
+        resync() on next service(): read OUTPUT/CONFIG,
+        re-apply fail-safe if the chip was reset.
+      end note
+    end
+    port -> bm : ~ScopedLock (unlock)
+    end
+    port -> pm : ~ScopedLock (unlock, every path)
+  end
+end
+@enduml

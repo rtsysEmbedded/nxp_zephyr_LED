@@ -1,0 +1,103 @@
+@startuml 04b_class_platform_osal
+!include _style.iuml
+
+title Platform adapters and OSAL - realizations per target (UML class diagram, part 2 of 2)
+
+package "gpio :: port / bus (interfaces, see part 1)" as ifc {
+  interface IGpioPort <<interface>>
+  interface IBus <<interface>>
+  interface IConfigSource <<interface>>
+}
+
+package "adapters/linux" as lx {
+  class LinuxGpiodPort <<platform>> {
+    libgpiod v2 line request
+    edge-event reader thread
+  }
+  class LinuxI2cDevBus <<platform>> {
+    /dev/i2c-N, ioctl(I2C_RDWR)
+  }
+  class LinuxSpidevBus <<platform>>
+  class JsonConfigSource <<platform>> {
+    parses gpio.json at start-up
+  }
+}
+
+package "adapters/zephyr" as zp {
+  class ZephyrGpioPort <<platform>> {
+    gpio_dt_spec, gpio_port_set_masked
+    gpio_callback -> k_work
+  }
+  class ZephyrI2cBus <<platform>> {
+    i2c_dt_spec, i2c_write_read_dt
+  }
+  class ZephyrSpiBus <<platform>>
+}
+
+package "adapters/mcux (FreeRTOS and bare-metal)" as mx {
+  class McuxGpioPort <<platform>> {
+    fsl_gpio: PSOR / PCOR / PTOR
+    ISR: clear ISFR, EventSignal
+  }
+  class McuxLpi2cBus <<platform>> {
+    mode from config:
+    blocking | freertos | async
+  }
+  class McuxLpspiBus <<platform>>
+  class GeneratedConfig <<generated>> {
+    constexpr tables in flash
+  }
+}
+
+LinuxGpiodPort ..|> IGpioPort
+ZephyrGpioPort ..|> IGpioPort
+McuxGpioPort ..|> IGpioPort
+LinuxI2cDevBus ..|> IBus
+LinuxSpidevBus ..|> IBus
+ZephyrI2cBus ..|> IBus
+ZephyrSpiBus ..|> IBus
+McuxLpi2cBus ..|> IBus
+McuxLpspiBus ..|> IBus
+JsonConfigSource ..|> IConfigSource
+GeneratedConfig ..|> IConfigSource
+
+package "osal (one implementation linked; static polymorphism, no virtual)" as os {
+  class "osal::Mutex" as Mutex <<osal>> {
+    + lock(timeout : Duration) : Error
+    + unlock() : void
+  }
+  class "osal::ScopedLock" as ScopedLock <<osal>> {
+    + ScopedLock(m : Mutex&, timeout : Duration)
+    + owns() : bool  {nodiscard}
+  }
+  class "osal::CriticalSection" as CriticalSection <<osal>> {
+    RAII, task <-> ISR, never blocks
+  }
+  class "osal::Context" as Context <<osal>> {
+    + in_isr() : bool
+    + scheduler_running() : bool
+  }
+  class "osal::EventSignal" as EventSignal <<osal>> {
+    + raise_from_isr(bits : uint32_t) : void
+    + wait(timeout : Duration) : uint32_t
+  }
+  class "osal::Clock" as Clock <<osal>> {
+    + now() : TimePoint
+  }
+}
+ScopedLock --> Mutex
+
+mx -[hidden]down- os
+ifc -[hidden]down- lx
+
+note as MAP
+  <b>OSAL mapping per target</b>
+  |= primitive |= Linux |= Zephyr |= FreeRTOS |= bare-metal |
+  | Mutex | std::mutex | k_mutex | xSemaphoreCreateMutexStatic | no-op (single context) |
+  | CriticalSection | std::mutex (no ISR in user space) | k_spin_lock | taskENTER_CRITICAL(_FROM_ISR) | PRIMASK / BASEPRI save+restore |
+  | Context::in_isr | false | k_is_in_isr() | xPortIsInsideInterrupt() or IPSR | __get_IPSR() != 0 |
+  | EventSignal | condition_variable | k_work_submit_to_queue | xTaskNotifyFromISR(eSetBits) | atomic pending mask + poll() |
+  | Clock | steady_clock | k_uptime_get | xTaskGetTickCount | SysTick / OSTIMER counter |
+end note
+MAP .. os
+@enduml

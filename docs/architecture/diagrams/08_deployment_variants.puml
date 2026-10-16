@@ -1,0 +1,59 @@
+@startuml 08_deployment_variants
+!include _style.iuml
+
+title Build variants - what is linked on each target (UML deployment diagram)
+
+node "Build host" as host {
+  artifact "config/gpio.json\nconfig/chips/*.json" as json
+  artifact "gpio_codegen.py" as gen
+  artifact "gpio_config.hpp\n(constexpr tables)" as hpp
+  artifact "gpio.overlay\ngpio.conf (Kconfig)" as dts
+  json --> gen
+  gen --> hpp
+  gen --> dts
+}
+
+node "Linux SBC / host PC" as linux {
+  node "Linux process" {
+    component "Portable core" as c1
+    component "LinuxGpiodPort\nLinuxI2cDevBus\nosal/linux (std::mutex)" as a1
+    artifact "gpio.json\n(runtime, JsonConfigSource)" as rj
+  }
+  node "Kernel" {
+    component "gpiolib + pca953x / mcp23s08\n/dev/gpiochipN" as k1
+  }
+  a1 --> k1 : libgpiod v2
+}
+
+node "FRDM-MCXN947 (Cortex-M33)" as board {
+  node "Variant A: Zephyr" as z {
+    component "Portable core" as c2
+    component "ZephyrGpioPort\nZephyrI2cBus\nosal/zephyr (k_mutex, k_spinlock, k_work)" as a2
+  }
+  node "Variant B: FreeRTOS + MCUXpresso SDK" as f {
+    component "Portable core" as c3
+    component "McuxGpioPort\nMcuxLpi2cBus (fsl_lpi2c_freertos)\nosal/freertos (static mutex, task notify)" as a3
+  }
+  node "Variant C: bare-metal + MCUXpresso SDK" as b {
+    component "Portable core" as c4
+    component "McuxGpioPort\nMcuxLpi2cBus (non-blocking)\nosal/baremetal (PRIMASK/BASEPRI)" as a4
+  }
+}
+
+hpp ..> c2 : compiled in
+hpp ..> c3 : compiled in
+hpp ..> c4 : compiled in
+dts ..> z : west build
+json ..> rj : installed
+
+c1 --> a1
+c2 --> a2
+c3 --> a3
+c4 --> a4
+
+note bottom of board
+  Exactly one variant per image.
+  Selected by CMake cache variables GPIO_OS and GPIO_SILICON
+  (values come from CMakePresets.json, not from source code).
+end note
+@enduml

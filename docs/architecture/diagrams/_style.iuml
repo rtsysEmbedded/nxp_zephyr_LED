@@ -1,0 +1,34 @@
+' Shared visual style for all UML views of the portable GPIO library.
+' Included by every non-C4 diagram; C4 views use the C4-PlantUML stdlib styling.
+' Change the look of all diagrams here, not in the individual files.
+
+skinparam shadowing false
+skinparam roundCorner 6
+skinparam defaultFontName "DejaVu Sans"
+skinparam defaultFontSize 12
+skinparam titleFontSize 16
+skinparam packageStyle rectangle
+skinparam classAttributeIconSize 0
+skinparam linetype polyline
+skinparam nodesep 40
+skinparam ranksep 50
+skinparam ArrowColor #444444
+skinparam NoteBackgroundColor #FFF8DC
+skinparam NoteBorderColor #B8A060
+skinparam SequenceGroupBorderColor #888888
+skinparam SequenceLifeLineBorderColor #888888
+skinparam StateBackgroundColor #F4F8FC
+skinparam StateBorderColor #34658F
+
+' Stereotype colours: one colour per architectural layer
+skinparam class {
+  BackgroundColor #FFFFFF
+  BorderColor #34658F
+  BackgroundColor<<facade>> #E3F2E1
+  BackgroundColor<<handle>> #E3F2E1
+  BackgroundColor<<interface>> #FFFFFF
+  BackgroundColor<<generated>> #F3E8FD
+  BackgroundColor<<osal>> #FDECE3
+  BackgroundColor<<platform>> #EAF1FB
+  BackgroundColor<<chip>> #FFF4D6
+}

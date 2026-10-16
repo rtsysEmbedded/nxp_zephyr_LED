@@ -1,0 +1,27 @@
+@startuml 01_c4_context
+!include <C4/C4_Context>
+
+title Portable GPIO library - C4 Level 1: System Context
+
+LAYOUT_TOP_DOWN()
+
+Person(dev, "Firmware / application developer", "Writes application logic against the portable GPIO API and maintains the JSON configuration.")
+Person(hw, "Hardware engineer", "Defines pin assignment, expander chips, bus wiring and fail-safe levels.")
+
+System(gpiolib, "Portable GPIO library", "C++17 library: one API for native SoC GPIO and I2C/SPI expander GPIO on Linux, Zephyr, FreeRTOS and bare-metal.")
+
+System_Ext(build, "Build toolchain", "CMake, west (Zephyr), MCUXpresso SDK build, Python code generator.")
+System_Ext(os, "Execution platform", "Linux kernel (gpiolib, i2c-dev, spidev) | Zephyr RTOS | FreeRTOS | bare-metal + MCUXpresso SDK.")
+System_Ext(soc, "SoC GPIO hardware", "e.g. MCXN947 GPIO0..5 with PSOR/PCOR/PTOR, PORT pin mux, NVIC.")
+System_Ext(exp, "GPIO expander chips", "I2C: PCA95xx/TCA95xx, MCP23017. SPI: MCP23S17, 74HC595.")
+
+Rel(dev, gpiolib, "Uses API, edits config/gpio.json")
+Rel(hw, gpiolib, "Provides pin map and chip list", "config/gpio.json")
+Rel(build, gpiolib, "Validates config, generates tables, compiles the selected variant")
+Rel(gpiolib, os, "Calls OS / SDK services", "mutex, ISR deferral, bus drivers")
+Rel(gpiolib, soc, "Drives native pins", "via OS driver or SDK HAL")
+Rel(gpiolib, exp, "Drives expander pins", "I2C / SPI transactions")
+Rel(exp, soc, "INT line", "open-drain, active low")
+
+SHOW_LEGEND()
+@enduml

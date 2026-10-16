@@ -1,0 +1,29 @@
+@startuml 02_c4_container
+!include <C4/C4_Container>
+
+title Portable GPIO library - C4 Level 2: Containers (build-time and run-time units)
+
+LAYOUT_LEFT_RIGHT()
+
+Person(dev, "Developer / integrator")
+
+System_Boundary(lib, "Portable GPIO library") {
+  ContainerDb(cfg, "Project configuration", "JSON + JSON Schema", "config/gpio.json (pins, ports, buses, IRQ priorities, task/work-queue settings) and config/chips/*.json (expander register maps). Single source of truth.")
+  Container(codegen, "gpio_codegen", "Python 3", "Schema + semantic validation; emits constexpr C++ tables, Zephyr DT overlay and Kconfig fragment. Fails the build on invalid config.")
+  Container(core, "Portable core", "C++17 static library", "Facade, pin handles, port abstraction, expander logic, event dispatcher. No OS or SDK includes.")
+  Container(adapters, "Platform adapters", "C++17, one set linked per target", "OSAL (mutex, critical section, context, event signal, clock) + native port + bus adapters for Linux | Zephyr | FreeRTOS | bare-metal.")
+}
+
+Container_Ext(app, "Application firmware / process", "C++", "Business logic: LEDs, relays, buttons.")
+System_Ext(platform, "Platform services", "libgpiod v2, Zephyr drivers, FreeRTOS kernel, MCUXpresso SDK (fsl_gpio, fsl_lpi2c, fsl_lpspi).")
+
+Rel(dev, cfg, "Edits")
+Rel(codegen, cfg, "Reads + validates")
+Rel(codegen, core, "Generates gpio_config.hpp for", "constexpr tables")
+Rel(codegen, platform, "Generates overlay / Kconfig fragment for", "Zephyr only")
+Rel(app, core, "Calls", "GpioSystem, OutputPin, InputPin, subscribe()")
+Rel(core, adapters, "Uses through interfaces", "IGpioPort, IBus, osal::*")
+Rel(adapters, platform, "Calls")
+
+SHOW_LEGEND()
+@enduml
