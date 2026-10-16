@@ -2,6 +2,7 @@
 
 | Document | Content |
 |---|---|
+| [GUIDE.md](GUIDE.md) | **Start here.** Step-by-step tutorial: problem, building blocks, worked examples, concurrency, interrupts, platforms, self-check questions, glossary |
 | [DESIGN_REVIEW.md](DESIGN_REVIEW.md) | Review method, quality goals, findings, revised architecture, verified MCXN947 facts |
 | [adr/](adr/) | Architecture Decision Records (one decision per file) |
 | [diagrams/](diagrams/) | PlantUML sources (C4 and UML views) |
