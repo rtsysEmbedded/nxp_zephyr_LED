@@ -1,0 +1,51 @@
+@startuml 16_seq_spi_transaction
+!include _style.iuml
+
+title SPI register read (MCP23S17 GPIOA) - configure, chip select timing, segments
+
+autonumber
+participant "Chip driver" as drv
+participant "SpiRegisterDevice\n(OpcodeFraming)" as reg
+participant "SpiDevice\n(mode 0, 10 MHz,\nGPIO CS)" as dev
+participant "ISpiController" as ctl
+participant "osal::Mutex\n(bus)" as bm
+participant "CS pin\n(native GPIO)" as cs
+participant "MCP23S17" as chip
+
+drv -> reg : read_reg(0x12, rx[1])
+reg -> reg : header = [0x40 | hw_addr<<1 | R=1, 0x12]\nresult for hw_addr 0: [0x41, 0x12]
+reg -> dev : begin(cfg.timeouts.lock_ms)
+dev -> bm : ScopedLock
+alt !owns()
+  dev --> drv : Error::Timeout
+else bus lock held
+  dev -> ctl : configure(cfg)
+  note right of ctl
+    Skipped when cfg equals the configuration
+    of the previous transaction on this bus.
+    Hardware: LPSPI TCR (CPOL, CPHA, LSBF,
+    FRAMESZ, PRESCALE) + CCR (SCKDIV).
+  end note
+  ctl -> ctl : wait until cs_inactive_ns elapsed\nsince the last CS release (osal::Clock)
+  ctl -> cs : assert (PCOR store, lock-free)
+  ctl -> ctl : wait cs_setup_ns
+  ctl -> chip : segment 1: tx [0x41, 0x12], rx discarded
+  ctl -> chip : segment 2: tx fill byte, rx 1 byte
+  chip --> ctl : GPIOA value
+  ctl -> ctl : wait cs_hold_ns
+  ctl -> cs : release (PSOR store)
+  ctl --> dev : Ok
+  dev -> bm : ~SpiTransaction (unlock)
+end
+dev --> reg : Result
+reg --> drv : value
+
+note over ctl, chip
+  SPI has no acknowledge. A missing or wrongly-configured device
+  returns 0x00 or 0xFF without any error. Chip drivers must verify
+  identity or a known register value at init.
+  Hardware chip select instead of GPIO: LPSPI TCR.PCS selects PCS[0..3],
+  TCR.CONT keeps it asserted across frames, CCR.PCSSCK / SCKPCS give
+  the setup and hold delays in hardware.
+end note
+@enduml

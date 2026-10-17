@@ -1,0 +1,47 @@
+@startuml 17_state_bus_controller
+!include _style.iuml
+
+title Bus controller lifecycle and error recovery (UML state machine)
+
+[*] --> Uninitialised
+Uninitialised --> CheckLines : init()
+CheckLines : I2C: are SCL and SDA both high?
+CheckLines : SPI: no check needed
+CheckLines --> Idle : lines high / SPI
+CheckLines --> Recovering : SDA or SCL low
+
+Idle : bus free, controller configured
+Idle --> InTransaction : lock acquired
+
+InTransaction : messages / segments in progress
+InTransaction --> Idle : end of transaction (STOP / CS released)
+InTransaction --> Idle : AddrNack | DataNack\n/ STOP sent, bus healthy
+InTransaction --> Aborting : transfer timeout | pin-low timeout\n| arbitration lost | FIFO error
+
+Aborting : stop the peripheral, flush FIFOs,
+Aborting : release lines (bit-bang)
+Aborting --> Idle : I2C lines high | SPI
+Aborting --> Recovering : I2C line still low
+
+Recovering : hardware: hook.to_gpio()
+Recovering : up to 9 SCL pulses until SDA high
+Recovering : generate STOP
+Recovering : hardware: hook.to_peripheral()
+Recovering --> Idle : SDA and SCL high
+Recovering --> Recovering : still low\n[attempt < cfg.recovery.max_attempts]
+Recovering --> Faulted : attempts exhausted
+
+Faulted : every call returns Error::BusStuck
+Faulted : application decides: power-cycle target,
+Faulted : reset board, degrade function
+Faulted --> Recovering : reset_bus() by application
+
+note right of Recovering
+  9 clock pulses: a target that was interrupted in the
+  middle of sending a byte holds SDA low; at most 8 data
+  bits + 1 ACK clock let it finish and release SDA
+  (bus clear procedure, NXP UM10204).
+  Linux: recovery is done by the kernel driver, if supported.
+  Zephyr: i2c_recover_bus(), if the driver implements it.
+end note
+@enduml

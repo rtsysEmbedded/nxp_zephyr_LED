@@ -1,0 +1,58 @@
+@startuml 20_timing_spi_modes
+
+title SPI modes: clock polarity (CPOL) and clock phase (CPHA), first three bits
+
+binary "CS (active low)" as CS
+binary "SCK, CPOL = 0" as S0
+binary "SCK, CPOL = 1" as S1
+concise "Data, CPHA = 0" as D0
+concise "Data, CPHA = 1" as D1
+
+@0
+CS is high
+S0 is low
+S1 is high
+D0 is {-}
+D1 is {-}
+
+@5
+CS is low
+D0 is "b7"
+
+@10
+S0 is high
+S1 is low
+D1 is "b7"
+
+@20
+S0 is low
+S1 is high
+D0 is "b6"
+
+@30
+S0 is high
+S1 is low
+D1 is "b6"
+
+@40
+S0 is low
+S1 is high
+D0 is "b5"
+
+@50
+S0 is high
+S1 is low
+D1 is "b5"
+
+@60
+S0 is low
+S1 is high
+D0 is {-}
+
+@70
+D1 is {-}
+CS is high
+
+highlight 10 to 11 #LightGreen : leading edge
+highlight 20 to 21 #LightBlue : trailing edge
+@enduml

@@ -1,0 +1,42 @@
+@startuml 18_activity_hal_init_order
+!include _style.iuml
+
+title hal::System initialisation order (dependency graph computed at build time)
+
+partition "Build time: gpio_codegen.py" {
+  start
+  :Build dependency graph from JSON:\nbit-bang bus -> its GPIO pins\nSPI device -> its CS pin\ndevice -> its bus\nexpander port -> its device\nexpander pin -> its port;
+  if (cycle found?) then (yes)
+    :Fail build: print the cycle;
+    stop
+  endif
+  if (bit-bang pin or GPIO chip select\non an expander port?) then (yes)
+    :Fail build: would nest bus lock\ninside an expander lock (ADR-0007);
+    stop
+  endif
+  :Emit init table in topological order;
+}
+
+partition "Run time: hal::System::init()" {
+  :1. Native GPIO ports;
+  :2. Native pins\n- SPI chip selects driven INACTIVE first\n- open-drain I2C lines released (high);
+  :3. Bus controllers\n- hardware: select FLEXCOMM function, clock, speed\n- bit-bang: check lines, recover if needed;
+  :4. Devices (address / chip-select bound to controller);
+  :5. Expander ports: fail-safe latch, then direction;
+  :6. Expander pins;
+  note right
+    Every step returns Result.
+    init() stops at the FIRST failing step;
+    the check below stands for that rule.
+  end note
+  if (a step failed?) then (yes)
+    :Return Error with failing element id\n(already initialised elements stay in their safe state);
+    stop
+  endif
+}
+
+partition "Run time: hal::System::start()" {
+  :Freeze subscriptions, enable IRQs,\nstart event contexts;
+  stop
+}
+@enduml

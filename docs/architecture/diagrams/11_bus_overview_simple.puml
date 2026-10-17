@@ -1,0 +1,28 @@
+@startuml 11_bus_overview_simple
+!include _style.iuml
+
+title I2C / SPI library overview: the boxes you need to understand first
+
+left to right direction
+
+rectangle "Chip driver\n(ExpanderPort, sensor, EEPROM)\nspeaks in registers" as drv #E3F2E1
+rectangle "RegisterDevice\nturns 'read register 0x00'\ninto bus bytes (framing)" as reg #E3F2E1
+rectangle "I2cDevice / SpiDevice\none chip on the bus:\naddress or chip select,\nmode, speed\nTransaction = bus lock" as dev #FFF4D6
+rectangle "I2cController / SpiController\none physical bus\nOWNS the bus lock" as ctl #EAF1FB
+rectangle "Hardware controller\nLPI2C / LPSPI, Zephyr driver,\nLinux i2c-dev / spidev" as hw #F3E8FD
+rectangle "Bit-bang controller\nsoftware toggles GPIO pins\n(native pins only)" as bb #F3E8FD
+rectangle "GPIO library\n(native, open-drain pins)" as gpio #FDECE3
+
+drv --> reg : read_reg(0x00, 2 bytes)
+reg --> dev : transaction: write [0x00], read 2
+dev --> ctl : transfer(messages)\nwhile holding bus lock
+ctl <|-- hw
+ctl <|-- bb
+bb --> gpio : set / release / read pins
+
+note bottom of ctl
+  Same interface for both implementations:
+  the chip driver cannot tell whether the bus
+  is a hardware peripheral or bit-banged GPIO.
+end note
+@enduml

@@ -1,0 +1,85 @@
+@startuml 19_timing_i2c_bitbang
+
+title I2C at bit level: START, two data bits, clock stretching, ACK, STOP
+
+scale 10 as 70 pixels
+
+binary "SCL" as SCL
+binary "SDA" as SDA
+concise "Phase" as PH
+
+@0
+SCL is high
+SDA is high
+PH is "idle"
+
+@10
+SDA is low
+PH is "S"
+
+@20
+SCL is low
+PH is "bit 1"
+
+@25
+SDA is high
+
+@40
+SCL is low
+PH is "bit 0"
+
+@45
+SDA is low
+
+@50
+PH is "stretch"
+
+@62
+PH is "bit 0"
+
+@72
+PH is "ACK"
+
+@74
+SDA is high
+
+@77
+SDA is low
+
+@92
+PH is "P"
+
+@110
+SDA is high
+PH is "idle"
+
+@30
+SCL is high
+
+@62
+SCL is high
+
+@72
+SCL is low
+
+@82
+SCL is high
+
+@92
+SCL is low
+
+@102
+SCL is high
+
+highlight 50 to 62 #LightPink : target holds SCL low
+
+note bottom of PH
+  S (START, t=10): SDA falls while SCL is high. Only START and STOP may change SDA while SCL is high.
+  bit 1 (t=20..40): master releases SDA while SCL is low (t=25); target samples while SCL is high (t=30..40).
+  bit 0 (t=40..72): master pulls SDA low (t=45) and releases SCL at t=50, but the target holds SCL low
+      until t=62 (clock stretching). The master must read SCL back and wait; it samples only after SCL is really high.
+  ACK (t=72..92): master releases SDA (rises through the pull-up at t=74); target pulls it low (t=77);
+      master samples SDA = 0 while SCL is high (t=82..92): acknowledged.
+  P (STOP, t=110): SDA rises while SCL is high.
+end note
+@enduml

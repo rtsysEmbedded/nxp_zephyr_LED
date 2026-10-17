@@ -1,10 +1,12 @@
-# Architecture documentation: portable GPIO library
+# Architecture documentation: portable HAL (GPIO, I2C, SPI)
 
 | Document | Content |
 |---|---|
 | [GUIDE.md](GUIDE.md) | **Start here.** Step-by-step tutorial: problem, building blocks, worked examples, concurrency, interrupts, platforms, self-check questions, glossary |
+| [BUS_GUIDE.md](BUS_GUIDE.md) | **I2C / SPI tutorial**: the protocols bit by bit, hardware vs bit-bang, building blocks, bus sharing, errors, self-check questions |
+| [BUS_DESIGN.md](BUS_DESIGN.md) | I2C / SPI design and design review: requirements, layers, bit-bang timing, lock hierarchy, failure-mode analysis, verified MCXN947 facts, impact on GPIO |
 | [DESIGN_REVIEW.md](DESIGN_REVIEW.md) | Review method, quality goals, findings, revised architecture, verified MCXN947 facts |
-| [adr/](adr/) | Architecture Decision Records (one decision per file) |
+| [adr/](adr/) | Architecture Decision Records (one decision per file): 0001-0004 GPIO, 0005-0008 I2C/SPI and the unified HAL |
 | [diagrams/](diagrams/) | PlantUML sources (C4 and UML views) |
 
 ## Conventions

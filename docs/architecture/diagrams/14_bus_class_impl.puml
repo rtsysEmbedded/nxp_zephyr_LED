@@ -1,0 +1,109 @@
+@startuml 14_bus_class_impl
+!include _style.iuml
+
+title I2C / SPI library - implementations: hardware vs bit-bang (UML class diagram, part 2 of 2)
+
+package "interfaces (see part 1)" as ifc {
+  interface II2cController <<interface>>
+  interface ISpiController <<interface>>
+}
+
+package "software controllers (portable, use GPIO)" as soft {
+  class BitBangI2c {
+    - scl_ : gpio::OpenDrainPin
+    - sda_ : gpio::OpenDrainPin
+    - delay_ : const IDelay&
+    - t_low_ns_ : uint32_t   // >= spec tLOW
+    - t_high_ns_ : uint32_t  // >= spec tHIGH
+    - stretch_timeout_us_ : uint32_t
+    - multi_master_ : bool
+    - mtx_ : osal::Mutex
+    - start() / repeated_start() / stop()
+    - write_bit(b) : Result<void>
+    - read_bit() : bool
+    - write_byte(b) : Result<Ack>
+    - read_byte(ack : bool) : uint8_t
+    - wait_scl_high() : Result<void>
+  }
+  class BitBangSpi {
+    - sck_ : gpio::OutputPin
+    - mosi_ : gpio::OutputPin
+    - miso_ : gpio::InputPin
+    - delay_ : const IDelay&
+    - mtx_ : osal::Mutex
+    - shift_word(tx : uint32_t, bits : uint8_t) : uint32_t
+  }
+  interface IDelay <<interface>> {
+    + wait_ns(ns : uint32_t) : void
+    + resolution_ns() : uint32_t
+  }
+  class CycleCounterDelay <<platform>> {
+    Cortex-M DWT CYCCNT
+    (if implemented)
+  }
+  class TimerDelay <<platform>> {
+    free-running hardware timer
+  }
+  class CalibratedLoopDelay <<platform>> {
+    busy loop, calibrated at init
+  }
+}
+
+package "hardware controllers (platform adapters)" as hard {
+  class McuxLpi2c <<platform>> {
+    LP_FLEXCOMM n, PERSEL = I2C
+    mode: blocking | rtos | async
+    uses PLTF / BBF / NDF / ALF flags
+  }
+  class McuxLpspi <<platform>> {
+    LP_FLEXCOMM n, PERSEL = SPI
+    TCR: CPOL, CPHA, LSBF, CONT, FRAMESZ
+    CCR: PCSSCK, SCKPCS, DBT delays
+  }
+  class ZephyrI2c <<platform>> {
+    i2c_transfer(), i2c_recover_bus()
+  }
+  class ZephyrSpi <<platform>> {
+    spi_transceive(), spi_release()
+  }
+  class LinuxI2cDev <<platform>> {
+    ioctl(I2C_RDWR)
+  }
+  class LinuxSpidev <<platform>> {
+    ioctl(SPI_IOC_MESSAGE(n))
+  }
+  interface IBusRecoveryHook <<interface>> {
+    + to_gpio() : Result<void>
+    + to_peripheral() : Result<void>
+    + scl() / sda() : gpio::OpenDrainPin
+  }
+}
+
+BitBangI2c ..|> II2cController
+BitBangSpi ..|> ISpiController
+McuxLpi2c ..|> II2cController
+ZephyrI2c ..|> II2cController
+LinuxI2cDev ..|> II2cController
+McuxLpspi ..|> ISpiController
+ZephyrSpi ..|> ISpiController
+LinuxSpidev ..|> ISpiController
+
+BitBangI2c --> IDelay
+BitBangSpi --> IDelay
+CycleCounterDelay ..|> IDelay
+TimerDelay ..|> IDelay
+CalibratedLoopDelay ..|> IDelay
+McuxLpi2c --> "0..1" IBusRecoveryHook : board supplies
+
+soft -[hidden]down- hard
+
+note as SEL
+  <b>Which implementation is used (ADR-0006)</b>
+  |= platform |= hardware peripheral |= bit-bang |
+  | Linux | kernel driver via i2c-dev / spidev | kernel i2c-gpio / spi-gpio, seen through i2c-dev / spidev |
+  | Zephyr | Zephyr I2C / SPI driver | Zephyr gpio-i2c / spi-bitbang driver |
+  | FreeRTOS | McuxLpi2c / McuxLpspi (rtos mode) | BitBangI2c / BitBangSpi (library) |
+  | bare-metal | McuxLpi2c / McuxLpspi (blocking or async) | BitBangI2c / BitBangSpi (library) |
+end note
+SEL .. hard
+@enduml

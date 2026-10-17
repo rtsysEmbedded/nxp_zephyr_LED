@@ -1,0 +1,50 @@
+@startuml 12_bus_c4_component
+!include <C4/C4_Component>
+
+title Portable HAL - C4 Level 3: I2C / SPI components and their link to GPIO
+
+LAYOUT_TOP_DOWN()
+
+Container_Ext(app, "Application and chip drivers", "C++", "ExpanderPort, sensor drivers, EEPROM driver")
+
+Container_Boundary(core, "Portable core (no OS includes)") {
+  Component(sys, "hal::System", "Facade + Factory", "Builds GPIO ports, buses, devices and expanders from configuration in dependency order.")
+  Component(regdev, "RegisterDevice", "Adapter + Strategy", "Register read/write over one device; framing strategy (I2C reg8/reg16, SPI R/W-bit, SPI opcode).")
+  Component(i2cdev, "I2cDevice", "Value object + RAII transaction", "7-bit address; write, read, write_read; Transaction holds the bus lock.")
+  Component(spidev, "SpiDevice", "Value object + RAII transaction", "Chip select (hardware index or GPIO pin), mode 0-3, speed, bit order, word size.")
+  Component(i2cctl, "II2cController", "Interface", "transfer(messages), recover(), caps(); owns the bus mutex.")
+  Component(spictl, "ISpiController", "Interface", "configure(device config), transfer(segments), caps(); owns the bus mutex.")
+  Component(bbi2c, "BitBangI2c", "Software controller", "START/STOP, bits, ACK, clock stretching, arbitration check, 9-clock recovery.")
+  Component(bbspi, "BitBangSpi", "Software controller", "Modes 0-3, MSB/LSB first, 1-32 bit words, full duplex.")
+  Component(delay, "IDelay", "Strategy", "Cycle counter, hardware timer, calibrated loop, host.")
+  Component(gpio, "GPIO library", "see diagrams 03/04", "Native pins incl. open-drain mode with read-back.")
+}
+
+Container_Boundary(adp, "Platform adapters (one set linked)") {
+  Component(hwi2c, "Hardware I2C adapters", "II2cController impl", "McuxLpi2c (blocking | rtos | async), ZephyrI2c, LinuxI2cDev")
+  Component(hwspi, "Hardware SPI adapters", "ISpiController impl", "McuxLpspi (blocking | rtos | async), ZephyrSpi, LinuxSpidev")
+  Component(osal, "OSAL", "Link-time selected", "Mutex, ScopedLock, CriticalSection, Context, EventSignal, Clock")
+  Component(hook, "Board hooks", "Implemented by the board", "Bus-recovery pin switching (GPIO <-> peripheral mux), clock frequency query")
+}
+
+Rel(app, regdev, "read_reg / write_reg")
+Rel(app, sys, "init(), start()")
+Rel(regdev, i2cdev, "uses (I2C framing)")
+Rel(regdev, spidev, "uses (SPI framing)")
+Rel(i2cdev, i2cctl, "transfer under bus lock")
+Rel(spidev, spictl, "configure + transfer under bus lock")
+Rel(bbi2c, i2cctl, "implements")
+Rel(bbspi, spictl, "implements")
+Rel(hwi2c, i2cctl, "implements")
+Rel(hwspi, spictl, "implements")
+Rel(bbi2c, gpio, "open-drain SCL/SDA")
+Rel(bbspi, gpio, "SCK/MOSI/MISO/CS")
+Rel(bbi2c, delay, "tLOW / tHIGH waits")
+Rel(bbspi, delay, "half-period waits")
+Rel(i2cctl, osal, "bus Mutex")
+Rel(hwi2c, hook, "recovery pins")
+Rel(sys, i2cctl, "creates")
+Rel(sys, spictl, "creates")
+
+SHOW_LEGEND()
+@enduml

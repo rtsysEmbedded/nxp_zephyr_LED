@@ -8,6 +8,8 @@ Read it in order. Each section builds on the previous one. The reference documen
 ([DESIGN_REVIEW.md](DESIGN_REVIEW.md) and the [ADRs](adr/)) contain the full findings and the decisions;
 this guide explains **why** they look the way they do.
 
+> **Amended 2026-10-17 by the I2C/SPI design** ([BUS_DESIGN.md](BUS_DESIGN.md) section 9): `IBus` is replaced by `hal::IRegisterDevice`, `GpioSystem` by `hal::System`, and the lock hierarchy is extended to buses. Names in this document are kept as originally reviewed.
+
 | Section | You will learn |
 |---|---|
 | 1 | The problem the library solves |

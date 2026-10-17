@@ -1,0 +1,144 @@
+@startuml 13_bus_class_core
+!include _style.iuml
+
+title I2C / SPI library - portable core structure (UML class diagram, part 1 of 2)
+
+package "hal :: i2c" as i2cpkg {
+  class I2cMsg <<value>> {
+    + flags : MsgFlags  {Write | Read | NoStop}
+    + buf : span<uint8_t>
+  }
+  interface II2cController <<interface>> {
+    + transfer(addr : uint16_t, msgs : span<I2cMsg>) : Result<void>
+    + recover() : Result<void>
+    + caps() : I2cCaps
+    + mutex() : osal::Mutex&  {package-private}
+  }
+  class I2cCaps <<value>> {
+    + max_hz : uint32_t
+    + clock_stretching : bool
+    + arbitration_detect : bool
+    + async : bool
+  }
+  class I2cDevice <<handle>> {
+    - ctl_ : II2cController*
+    - addr_ : uint16_t
+    + write(data : span<const uint8_t>) : Result<void>
+    + read(data : span<uint8_t>) : Result<void>
+    + write_read(tx : span<const uint8_t>, rx : span<uint8_t>) : Result<void>
+    + begin(timeout : Duration) : Result<I2cTransaction>
+  }
+  class I2cTransaction <<RAII>> {
+    holds the bus lock until destroyed
+    + transfer(msgs : span<I2cMsg>) : Result<void>
+  }
+}
+
+package "hal :: spi" as spipkg {
+  class SpiConfig <<value>> {
+    + max_hz : uint32_t
+    + mode : uint8_t  // 0..3 = CPOL * 2 + CPHA
+    + bit_order : MsbFirst | LsbFirst
+    + word_bits : 1..32
+    + cs : ChipSelect
+    + cs_setup_ns : uint32_t
+    + cs_hold_ns : uint32_t
+    + cs_inactive_ns : uint32_t
+  }
+  class ChipSelect <<value>> {
+    + kind : Hardware | Gpio
+    + hw_index : uint8_t
+    + gpio_pin : gpio::OutputPin
+    + active_high : bool
+  }
+  class SpiSegment <<value>> {
+    + tx : span<const uint8_t>  (empty = send fill)
+    + rx : span<uint8_t>        (empty = discard)
+  }
+  interface ISpiController <<interface>> {
+    + configure(cfg : const SpiConfig&) : Result<void>
+    + assert_cs(cfg : const SpiConfig&, active : bool) : Result<void>
+    + transfer(segments : span<SpiSegment>) : Result<void>
+    + caps() : SpiCaps
+    + mutex() : osal::Mutex&  {package-private}
+  }
+  class SpiDevice <<handle>> {
+    - ctl_ : ISpiController*
+    - cfg_ : const SpiConfig*
+    + transfer(tx, rx) : Result<void>
+    + begin(timeout : Duration) : Result<SpiTransaction>
+  }
+  class SpiTransaction <<RAII>> {
+    bus lock + configure + CS asserted
+    until destroyed
+    + transfer(segments : span<SpiSegment>) : Result<void>
+  }
+}
+
+package "hal :: regs" as regpkg {
+  interface IRegisterDevice <<interface>> {
+    + write_reg(reg : uint16_t, data : span<const uint8_t>) : Result<void>
+    + read_reg(reg : uint16_t, data : span<uint8_t>) : Result<void>
+  }
+  class I2cRegisterDevice {
+    - dev_ : I2cDevice
+    - addr_bytes_ : 1 | 2
+  }
+  class SpiRegisterDevice {
+    - dev_ : SpiDevice
+    - framing_ : const ISpiFraming&
+  }
+  interface ISpiFraming <<interface>> {
+    + header(reg : uint16_t, read : bool, out : span<uint8_t>) : size_t
+  }
+  class RwBitFraming <<chip>> {
+    read flag / auto-increment flag
+    from chip JSON
+  }
+  class OpcodeFraming <<chip>> {
+    opcode | hw_address | R/W
+    (e.g. MCP23S17)
+  }
+}
+
+II2cController ..> I2cMsg
+II2cController ..> I2cCaps
+I2cDevice --> "1" II2cController
+I2cDevice ..> I2cTransaction : <<create>>
+I2cTransaction --> II2cController
+
+ISpiController ..> SpiSegment
+ISpiController ..> SpiConfig
+SpiConfig *-- ChipSelect
+SpiDevice --> "1" ISpiController
+SpiDevice --> "1" SpiConfig
+SpiDevice ..> SpiTransaction : <<create>>
+SpiTransaction --> ISpiController
+
+I2cRegisterDevice ..|> IRegisterDevice
+SpiRegisterDevice ..|> IRegisterDevice
+I2cRegisterDevice *-- I2cDevice
+SpiRegisterDevice *-- SpiDevice
+SpiRegisterDevice --> ISpiFraming
+RwBitFraming ..|> ISpiFraming
+OpcodeFraming ..|> ISpiFraming
+
+i2cpkg -[hidden]right- spipkg
+i2cpkg -[hidden]down- regpkg
+
+note bottom of IRegisterDevice
+  Replaces gpio::IBus from the GPIO design (ADR-0005).
+  ExpanderPort and sensor drivers depend only on this.
+  No mutex() here: locking happens inside one call
+  or inside an explicit Transaction.
+end note
+
+note right of SpiTransaction
+  Lock order (global hierarchy, ADR-0007):
+    level 1: ExpanderPort lock
+    level 2: bus controller lock
+  A level-2 holder never takes another lock.
+  Therefore a GPIO chip-select must be a
+  native pin (lock-free), never an expander pin.
+end note
+@enduml

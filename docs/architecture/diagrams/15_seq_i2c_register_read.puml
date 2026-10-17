@@ -1,0 +1,59 @@
+@startuml 15_seq_i2c_register_read
+!include _style.iuml
+
+title I2C register read (PCA9555 INPUT0..1) - transaction, lock and error paths
+
+autonumber
+participant "ExpanderPort\n(holds its port lock)" as port
+participant "I2cRegisterDevice" as reg
+participant "I2cDevice\n(addr 0x20)" as dev
+participant "II2cController\n(hardware or bit-bang)" as ctl
+participant "osal::Mutex\n(bus)" as bm
+participant "PCA9555" as chip
+
+port -> reg : read_reg(0x00, rx[2])
+reg -> dev : write_read(tx = [0x00], rx[2])
+dev -> bm : ScopedLock(cfg.timeouts.lock_ms)
+alt !owns()
+  dev --> port : Error::Timeout (bus busy too long)
+else bus lock held
+  dev -> ctl : transfer(0x20, [Write [0x00] NoStop, Read 2])
+  ctl -> chip : START, 0x20+W
+  alt address not acknowledged
+    chip --> ctl : NACK
+    ctl -> chip : STOP
+    ctl --> dev : Error::AddrNack
+    note right of ctl
+      NACK is NOT a bus fault: the bus is idle
+      and healthy after STOP. No recovery.
+      Causes: device absent, wrong address,
+      device busy (e.g. EEPROM write cycle).
+      The caller decides whether to retry.
+    end note
+  else ACK
+    chip --> ctl : ACK
+    ctl -> chip : register 0x00
+    chip --> ctl : ACK
+    ctl -> chip : repeated START, 0x20+R
+    chip --> ctl : ACK, data0
+    ctl -> chip : ACK (more bytes follow)
+    chip --> ctl : data1
+    ctl -> chip : NACK (last byte), STOP
+    ctl --> dev : Ok
+  else SCL/SDA held low or transfer timeout
+    ctl -> ctl : abort, flush FIFOs
+    ctl -> ctl : recover(): 9 SCL pulses, STOP
+    ctl --> dev : Error::BusStuck or Error::Timeout
+  end
+  dev -> bm : ~ScopedLock (unlock)
+  dev --> reg : Result
+end
+reg --> port : Result
+
+note over port, reg
+  Lock order: port lock (level 1) is already held,
+  bus lock (level 2) is taken inside write_read().
+  The library never retries automatically: a repeated
+  read of a clear-on-read or FIFO register would lose data.
+end note
+@enduml
