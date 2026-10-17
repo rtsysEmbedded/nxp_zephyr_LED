@@ -1,14 +1,14 @@
 @startuml 10_overview_simple
 !include _style.iuml
 
-title Overview: the five boxes you need to understand first
+title GPIO overview: the five boxes you need to understand first
 
 left to right direction
 
 rectangle "1. Application\n(your LED / relay / button logic)" as app #E3F2E1
 rectangle "2. Pin\nknows only: which port, which bit\nNO state, NO lock" as pin #E3F2E1
 rectangle "3. Port\none GPIO controller\nOWNS all pin state + the lock" as port #FFF4D6
-rectangle "4. Bus (only for expanders)\nI2C or SPI: moves bytes\nOWNS the bus lock" as bus #EAF1FB
+rectangle "4. I2C / SPI module (same hal package)\nIRegisterDevice: moves register bytes\nbus controller OWNS the bus lock\n(details: diagram 11)" as bus #EAF1FB
 rectangle "5. Hardware\nSoC GPIO registers\nor expander chip" as hw #F3E8FD
 rectangle "OSAL\nmutex, ISR detection, event signal\n(one implementation per OS)" as osal #FDECE3
 

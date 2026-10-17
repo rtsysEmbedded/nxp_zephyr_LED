@@ -4,8 +4,8 @@
 title Configuration pipeline - JSON as single source of truth (UML activity diagram)
 
 start
-:Read config/gpio.json and config/chips/*.json;
-:Validate against gpio.schema.json\n(types, enums, required fields, schema_version);
+:Read config/hal.json and config/chips/*.json;
+:Validate against hal.schema.json\n(types, enums, required fields, schema_version);
 if (schema valid?) then (no)
   :Print JSON path + reason;
   stop
@@ -19,23 +19,27 @@ note right
   - bus referenced but not defined
   - fail_safe missing for an output
   - port owned by more than one core
+  - buses / devices: native lock-free bus pins,
+    I2C speed vs slowest device, unique addresses,
+    LP_FLEXCOMM function conflicts, graph acyclic
+    (BUS_DESIGN.md section 8, diagram 18)
 end note
 if (semantically valid?) then (no)
   :Fail build with diagnostic;
   stop
 endif
-switch (GPIO_OS)
+switch (HAL_OS)
 case (linux)
-  :Install gpio.json next to binary\n(JsonConfigSource parses at start-up);
+  :Install hal.json next to binary\n(JsonConfigSource parses at start-up);
 case (zephyr)
-  :Emit gpio.overlay (expander nodes only;\nnever redefine board nodes);
-  :Emit gpio.conf Kconfig fragment;
-  :Emit gpio_config.hpp;
+  :Emit hal.overlay (expander nodes only;\nnever redefine board nodes);
+  :Emit hal.conf Kconfig fragment;
+  :Emit hal_config.hpp;
 case (freertos)
-  :Emit gpio_config.hpp;
+  :Emit hal_config.hpp;
 case (baremetal)
-  :Emit gpio_config.hpp;
+  :Emit hal_config.hpp;
 endswitch
-:Compile portable core + selected adapters;
+:Compile portable hal modules + selected platform adapters;
 stop
 @enduml

@@ -9,7 +9,7 @@ participant "Native GPIO ISR\n(GPIOx IRQ)" as isr
 participant "osal::EventSignal" as sig
 participant "Event context\n(task / work item / poll)" as evt
 participant "ExpanderPort" as port
-participant "IBus" as bus
+participant "IRegisterDevice\n(bus lock inside)" as bus
 participant "EventDispatcher" as disp
 participant "Observer callback" as cb
 

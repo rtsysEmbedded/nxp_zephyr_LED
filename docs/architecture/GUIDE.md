@@ -8,7 +8,9 @@ Read it in order. Each section builds on the previous one. The reference documen
 ([DESIGN_REVIEW.md](DESIGN_REVIEW.md) and the [ADRs](adr/)) contain the full findings and the decisions;
 this guide explains **why** they look the way they do.
 
-> **Amended 2026-10-17 by the I2C/SPI design** ([BUS_DESIGN.md](BUS_DESIGN.md) section 9): `IBus` is replaced by `hal::IRegisterDevice`, `GpioSystem` by `hal::System`, and the lock hierarchy is extended to buses. Names in this document are kept as originally reviewed.
+> **Scope.** This guide covers the `gpio` and `expander` modules of the `hal` package. The whole package, with all
+> modules, inheritance and dependencies, is explained in [HAL_ARCHITECTURE.md](HAL_ARCHITECTURE.md); the `i2c`, `spi`
+> and `regs` modules in [BUS_GUIDE.md](BUS_GUIDE.md).
 
 | Section | You will learn |
 |---|---|
@@ -68,16 +70,16 @@ The text diagram below is the same picture:
 ```
 Application ──► Pin ──► Port ──► Hardware          (native pin: one register store)
                          │
-                         └─────► Bus ──► Hardware  (expander pin: I²C / SPI transfer)
+                         └─────► IRegisterDevice ──► Hardware  (expander pin: I²C / SPI transfer)
 
-OSAL (mutex, ISR check, event signal) is used by Port and Bus.
+OSAL (mutex, ISR check, event signal) is used by Port and by the I²C / SPI modules.
 ```
 
 | Block | Responsibility (one sentence) | Holds state? | Holds a lock? |
 |---|---|---|---|
 | **Pin** (`OutputPin`, `InputPin`) | Remembers which port and which bit it is | No | No |
 | **Port** (`IGpioPort`) | Represents one GPIO controller and **owns the state of all its pins** | Yes | Yes (port lock) |
-| **Bus** (`IBus`) | Moves bytes over one physical I²C or SPI bus | No | Yes (bus lock) |
+| **Register device** (`regs::IRegisterDevice`, from the I²C / SPI modules of the same package) | Moves register bytes to an expander over I²C or SPI | No | The bus lock, taken inside the I²C / SPI controller |
 | **OSAL** | Gives the same mutex, ISR check and event signal on every OS | No | n/a |
 | **Platform adapter** | Calls the real driver: libgpiod, Zephyr API, MCUXpresso SDK | No | No |
 
@@ -368,18 +370,18 @@ build time). The other core asks the owner to act.
 ## 8. Configuration without hard-coded values
 
 Nothing that describes a *project* appears in the C++ source: no pin numbers, no I²C addresses,
-no timeouts, no stack sizes, no priorities. They are in `config/gpio.json`.
+no timeouts, no stack sizes, no priorities. They are in `config/hal.json`.
 
 ```
-config/gpio.json ──► tools/gpio_codegen.py ──► checks ──► generated files ──► compiler
- (you edit this)      (runs at build time)     fail the    gpio_config.hpp
+config/hal.json ──► tools/hal_codegen.py ──► checks ──► generated files ──► compiler
+ (you edit this)      (runs at build time)     fail the    hal_config.hpp
                                                build on    (+ devicetree overlay on Zephyr)
                                                any error
 ```
 
 Diagram: [`09_activity_config_pipeline.puml`](diagrams/09_activity_config_pipeline.puml).
 
-Example (shape only; the authoritative schema will live in `config/gpio.schema.json`):
+Example (shape only; the authoritative schema will live in `config/hal.schema.json`):
 
 ```json
 {
@@ -446,18 +448,18 @@ Patterns are names for solutions that were found repeatedly. Learn each by the p
 
 | Pattern | Problem it solves here | Where |
 |---|---|---|
-| **Bridge** | "The pin API and the hardware vary independently. Without separation you need one class per (API variant × hardware variant)." | Pin → Port → Bus |
-| **Adapter** | "Zephyr, FreeRTOS, Linux and the SDK offer different APIs for the same idea (a mutex, an I²C transfer). Our code wants one API." | OSAL, bus adapters |
-| **Strategy** | "MCP23017 and PCA9555 differ only in framing and interrupt behaviour; the rest of the expander logic is identical." | `IExpanderChip` |
-| **Facade** | "The application should not wire ports, buses and chips together itself." | `GpioSystem` |
-| **Factory** | "Objects must be built from the configuration, not from constants in code." | `GpioSystem::init()` |
+| **Bridge** | "The pin API and the hardware vary independently. Without separation you need one class per (API variant × hardware variant)." | Pin → Port → IRegisterDevice → bus controller |
+| **Adapter** | "Zephyr, FreeRTOS, Linux and the SDK offer different APIs for the same idea (a mutex, an I²C transfer). Our code wants one API." | OSAL, I²C / SPI hardware adapters |
+| **Strategy** | "MCP23017 and PCA9555 differ only in register map and interrupt behaviour; the rest of the expander logic is identical." | `IExpanderChip` (framing: `ISpiFraming` in the regs module) |
+| **Facade** | "The application should not wire ports, buses and chips together itself." | `hal::System` |
+| **Composition Root** (generated) | "Objects must be built from the configuration, not from constants in code, and without heap." | generated `hal_instances.cpp` ([ADR-0009](adr/0009-one-hal-package-structure.md)) |
 | **Observer** | "Several parts of the program want to react to the same input change." | `EventDispatcher` |
 | **Deferred execution** | "The interrupt handler cannot do the real work." | `EventSignal` + event context |
 | **RAII** | "A lock must be released on every return path, and there are no exceptions to unwind." | `ScopedLock`, `CriticalSection` |
 | **Shadow state** | "The hardware register is write-only, slow or byte-wide." | `ExpanderPort` |
 
 **Virtual functions or templates?** Virtual (run-time) dispatch is used at the few boundaries
-where different kinds of objects must live in one array (`IGpioPort`, `IBus`, `IExpanderChip`).
+where different kinds of objects must live in one array (`IGpioPort`, `IRegisterDevice`, `IExpanderChip`; and `II2cController`, `ISpiController` in the bus modules).
 One indirect call is negligible next to a bus transfer. Link-time selection (CMake choosing a
 source directory) is used for OSAL and platform code, which costs nothing at run time. See
 [ADR-0001](adr/0001-layering-and-polymorphism.md).
@@ -466,11 +468,11 @@ source directory) is used for OSAL and platform code, which costs nothing at run
 
 | Task | What you add | What stays unchanged |
 |---|---|---|
-| New expander chip (for example another I²C chip with the same two-register layout) | A register-map JSON file under `config/chips/` and, if its framing or interrupt behaviour differs, one `IExpanderChip` class | Pin, Port logic, Bus, OSAL, the application |
-| New bus controller | One `IBus` class | Everything above it |
-| New silicon (for example another MCU family) | One native-port class and bus classes in `adapters/<silicon>/` | Core, application |
+| New expander chip (for example another I²C chip with the same two-register layout) | A register-map JSON file under `config/chips/` and, if its framing or interrupt behaviour differs, one `IExpanderChip` class | Pin, Port logic, I²C / SPI modules, OSAL, the application |
+| New bus controller | One `II2cController` or `ISpiController` class (see [BUS_GUIDE.md](BUS_GUIDE.md)) | Everything above it |
+| New silicon (for example another MCU family) | One native-port class and the I²C / SPI controller classes in `hal::platform::<silicon>` | Core, application |
 | New operating system | A new `osal/<os>/` directory (six small classes) | Core, application |
-| New pin in the product | Lines in `gpio.json` | All C++ |
+| New pin in the product | Lines in `hal.json` | All C++ |
 
 ## 12. Self-check questions
 

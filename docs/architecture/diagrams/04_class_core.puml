@@ -1,50 +1,35 @@
 @startuml 04_class_core
 !include _style.iuml
 
-title Portable core - static structure (UML class diagram, part 1 of 2)
+title GPIO and I/O-expander modules - static structure (UML class diagram)
 
-package "gpio :: api" as api {
-  class GpioSystem <<facade>> {
-    - ports_ : StaticVector<IGpioPort*, kMaxPorts>
+package "hal::system" as syspkg {
+  class System <<facade>> {
+    - components_ : StaticVector<IComponent*, kMaxComponents>
     - dispatcher_ : EventDispatcher
     - state_ : SystemState
     + init(cfg : const IConfigSource&) : Result<void>
     + start() : Result<void>
     + output(name : string_view) : Result<OutputPin>
     + input(name : string_view) : Result<InputPin>
+    + open_drain(name : string_view) : Result<OpenDrainPin>
+    + registers(name : string_view) : Result<IRegisterDevice*>
     + subscribe(pin : InputPin, cb : EventCallback, ctx : void*) : Result<void>
     + poll() : void
   }
+}
 
-  class OutputPin <<handle>> {
-    - port_ : IGpioPort*
-    - mask_ : uint32_t
-    - active_low_ : bool
-    + set(level : Level) : Result<void>
-    + toggle() : Result<void>
+package "hal::core" as corepkg {
+  interface IComponent <<interface>> {
+    + init() : Result<void>
+    + id() : ComponentId
+    + health() : Health
   }
-
-  class InputPin <<handle>> {
-    - port_ : IGpioPort*
-    - mask_ : uint32_t
-    - active_low_ : bool
-    + read() : Result<Level>
-  }
-
-  class EventDispatcher {
-    - subs_ : StaticVector<Subscription, kMaxSubscribers>
-    - frozen_ : bool
-    + add(port : uint8_t, mask : uint32_t, edge : Edge, cb : EventCallback, ctx : void*) : Result<void>
-    + freeze() : void
-    + on_port_changed(port : uint8_t, changed : uint32_t, levels : uint32_t) : void
-  }
-
   class "Result<T>" as Result {
     + ok() : bool
     + error() : Error
     + value() : T&
   }
-
   enum Error {
     Ok
     InvalidArg
@@ -54,12 +39,16 @@ package "gpio :: api" as api {
     Io
     IsrContext
     WouldBlock
+    AddrNack
+    DataNack
+    ArbitrationLost
+    BusStuck
+    Unsupported
   }
 }
 
-package "gpio :: port" as portpkg {
+package "hal::gpio" as gpiopkg {
   interface IGpioPort <<interface>> {
-    + init(desc : const PortDesc&) : Result<void>
     + configure(index : uint8_t, pin : const PinDesc&) : Result<void>
     + write_masked(mask : uint32_t, value : uint32_t) : Result<void>
     + toggle_masked(mask : uint32_t) : Result<void>
@@ -67,17 +56,47 @@ package "gpio :: port" as portpkg {
     + caps() : PortCaps
     + service() : void
   }
-
   class PortCaps <<value>> {
     + can_sleep : bool
     + atomic_write : bool
+    + open_drain : bool
     + width : uint8_t
     + irq_capable : bool
   }
+  class OutputPin <<handle>> {
+    - port_ : IGpioPort*
+    - mask_ : uint32_t
+    - active_low_ : bool
+    + set(level : Level) : Result<void>
+    + toggle() : Result<void>
+  }
+  class InputPin <<handle>> {
+    - port_ : IGpioPort*
+    - mask_ : uint32_t
+    - active_low_ : bool
+    + read() : Result<Level>
+  }
+  class OpenDrainPin <<handle>> {
+    - port_ : IGpioPort*
+    - mask_ : uint32_t
+    + release() : Result<void>
+    + drive_low() : Result<void>
+    + read() : Result<Level>
+  }
+  class EventDispatcher {
+    - subs_ : StaticVector<Subscription, kMaxSubscribers>
+    - frozen_ : bool
+    + add(port : ComponentId, mask : uint32_t, edge : Edge, cb : EventCallback, ctx : void*) : Result<void>
+    + freeze() : void
+    + on_port_changed(port : ComponentId, changed : uint32_t, levels : uint32_t) : void
+  }
+}
 
+package "hal::expander" as exppkg {
   class ExpanderPort {
-    - bus_ : IBus&
+    - regs_ : IRegisterDevice&
     - chip_ : const IExpanderChip&
+    - int_pin_ : optional<InputPin>
     - mtx_ : osal::Mutex
     - shadow_out_ : uint32_t
     - shadow_dir_ : uint32_t
@@ -89,10 +108,8 @@ package "gpio :: port" as portpkg {
     - resync() : Result<void>
     - apply_fail_safe() : Result<void>
   }
-
   interface IExpanderChip <<interface>> {
     + regs() : const ChipRegisterMap&
-    + frame(reg : uint8_t, data : span<const uint8_t>, out : span<uint8_t>) : size_t
     + irq_cleared_by_input_read() : bool
   }
   class Pca95xxChip <<chip>>
@@ -100,85 +117,77 @@ package "gpio :: port" as portpkg {
   class ShiftRegChip <<chip>>
 }
 
-package "gpio :: bus" as buspkg {
-  interface IBus <<interface>> {
-    + write_reg(reg : uint8_t, data : span<const uint8_t>) : Result<void>
-    + read_reg(reg : uint8_t, data : span<uint8_t>) : Result<void>
-    + mutex() : osal::Mutex&
-    + recover() : Result<void>
+package "hal::regs (see diagram 13)" as regspkg {
+  interface IRegisterDevice <<interface>> {
+    + write_reg(reg : uint16_t, data : span<const uint8_t>) : Result<void>
+    + read_reg(reg : uint16_t, data : span<uint8_t>) : Result<void>
   }
 }
 
-package "gpio :: config" as cfgpkg {
+package "hal::config" as cfgpkg {
   interface IConfigSource <<interface>> {
-    + buses() : span<const BusDesc>
     + ports() : span<const PortDesc>
     + pins() : span<const PinDesc>
+    + buses() : span<const BusDesc>
+    + devices() : span<const DeviceDesc>
     + chips() : span<const ChipRegisterMap>
+    + init_order() : span<const ComponentId>
   }
   class PinDesc <<generated>> {
     + name : const char*
-    + port : uint8_t
+    + port : ComponentId
     + index : uint8_t
     + dir : Direction
+    + drive : PushPull | OpenDrain
     + edge : Edge
     + pull : Pull
     + active_low : bool
     + initial : Level
     + fail_safe : Level
   }
-  class PortDesc <<generated>>
-  class BusDesc <<generated>>
-  class ChipRegisterMap <<generated>>
 }
 
 ' ---- relations ----
-GpioSystem *-- "1" EventDispatcher
-GpioSystem o-- "1..kMaxPorts" IGpioPort : owns\n(static storage)
-GpioSystem ..> IConfigSource : reads at init()
-GpioSystem ..> OutputPin : <<create>>
-GpioSystem ..> InputPin : <<create>>
+IGpioPort --|> IComponent
+ExpanderPort ..|> IGpioPort
+System o-- "*" IComponent : init table
+System *-- "1" EventDispatcher
+System ..> IConfigSource : reads at init()
+System ..> OutputPin : <<create>>
+System ..> InputPin : <<create>>
+System ..> OpenDrainPin : <<create>>
 OutputPin --> "1" IGpioPort
 InputPin --> "1" IGpioPort
+OpenDrainPin --> "1" IGpioPort
 IGpioPort ..> PortCaps
 IGpioPort ..> EventDispatcher : on_port_changed()\nfrom service()
 
-ExpanderPort ..|> IGpioPort
-ExpanderPort --> "1" IBus
+ExpanderPort --> "1" IRegisterDevice
 ExpanderPort --> "1" IExpanderChip
 Pca95xxChip ..|> IExpanderChip
 Mcp23x17Chip ..|> IExpanderChip
 ShiftRegChip ..|> IExpanderChip
-IExpanderChip ..> ChipRegisterMap
-
 IConfigSource ..> PinDesc
-IConfigSource ..> PortDesc
-IConfigSource ..> BusDesc
-IConfigSource ..> ChipRegisterMap
 
-' layout hints only (no semantic meaning)
-api -[hidden]down- portpkg
-portpkg -[hidden]right- cfgpkg
-Result -[hidden]down- Error
-
-note right of GpioSystem
-  Two-phase: constructor does no hardware access.
+note right of System
+  Two-phase: constructors do no hardware access;
+  init() walks the generated init order (ADR-0008).
   Name lookup only before start(); handles afterwards.
   poll() = bare-metal super-loop hook; empty on RTOS
-  targets (event task / work queue do the service()).
+  targets (event task / work queue call service()).
 end note
 
 note bottom of OutputPin
   Stateless value type: no mutex, no shadow.
   All mutable state lives in exactly one place: the port.
+  The same class serves native pins and expander pins.
 end note
 
 note bottom of ExpanderPort
-  Lock order (fixed, never reversed):
+  Lock order (global hierarchy, ADR-0007):
     1. ExpanderPort::mtx_
-    2. IBus::mutex()
+    2. bus controller lock, taken inside
+       IRegisterDevice::write_reg / read_reg
   Shadow registers are never touched from an ISR.
-  osal::CriticalSection is used only for state truly
-  shared with an ISR; never around a bus transfer.
 end note
 @enduml

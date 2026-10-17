@@ -3,6 +3,14 @@
 
 title I2C / SPI library - portable core structure (UML class diagram, part 1 of 2)
 
+package "hal :: core" as corepkg {
+  interface IComponent <<interface>> {
+    + init() : Result<void>
+    + id() : ComponentId
+    + health() : Health
+  }
+}
+
 package "hal :: i2c" as i2cpkg {
   class I2cMsg <<value>> {
     + flags : MsgFlags  {Write | Read | NoStop}
@@ -101,6 +109,8 @@ package "hal :: regs" as regpkg {
   }
 }
 
+II2cController --|> IComponent
+ISpiController --|> IComponent
 II2cController ..> I2cMsg
 II2cController ..> I2cCaps
 I2cDevice --> "1" II2cController

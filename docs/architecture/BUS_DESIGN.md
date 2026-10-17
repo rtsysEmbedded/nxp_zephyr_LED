@@ -79,7 +79,8 @@ Identical to the GPIO design ([DESIGN_REVIEW.md](DESIGN_REVIEW.md) section 2), p
 | Implementation | hardware adapters, `BitBangI2c`, `BitBangSpi`, `IDelay` | Platform or software specifics | peripheral state |
 | Shared | OSAL, `Result`/`Error`, configuration, board hooks | Same as GPIO | - |
 
-Diagrams: overview `11`, components `12`, classes `13` and `14`.
+Diagrams: overview `11`, components `12`, classes `13` and `14`. Controllers inherit `hal::core::IComponent` like GPIO ports;
+the complete package (all modules, inheritance, cross-module use) is in [HAL_ARCHITECTURE.md](HAL_ARCHITECTURE.md), diagrams `21`-`24`.
 
 ### 4.2 Why three layers and not one
 
@@ -100,7 +101,7 @@ A single "bus" object would mix three concerns that change for different reasons
 | Adapter | Hardware adapters | Linux ioctl, Zephyr API and MCUXpresso SDK become one interface |
 | RAII (scoped lock) | `I2cTransaction`, `SpiTransaction` | Bus lock and chip select released on every return path, without exceptions |
 | Template Method (in the bit-bang controllers) | `BitBangI2c::transfer` composed of `start`, `write_byte`, `read_byte`, `stop` | Protocol sequence fixed, primitive steps testable separately |
-| Facade + Factory | `hal::System` | One owner, built from configuration in dependency order (ADR-0008) |
+| Facade + Composition Root | `hal::System` + generated `hal_instances.cpp` | Objects defined once by generated code from configuration; `System` initialises them in dependency order (ADR-0008, ADR-0009) |
 
 ## 5. Implementations: hardware peripheral and bit-bang
 
@@ -265,7 +266,7 @@ Initialisation order is computed at build time from the dependency graph (diagra
 → 4 devices → 5 expander ports (fail-safe first) → 6 expander pins → start()
 ```
 
-Configuration shape (authoritative schema: `config/gpio.schema.json`, to be written in phase 1):
+Configuration shape (authoritative schema: `config/hal.schema.json`, to be written in phase 1):
 
 ```json
 {
@@ -329,8 +330,7 @@ Generator checks added for buses:
 | A-6 | `GpioSystem` becomes `hal::System` with generated init order | ADR-0008 |
 | A-7 | Lock hierarchy extended to buses; bit-bang pins and GPIO chip selects must be native | ADR-0007 |
 
-The GPIO documents and diagrams `01`-`10` keep the earlier names; read `IBus` as `IRegisterDevice` and
-`GpioSystem` as `hal::System`.
+The living documents (GUIDE.md, diagrams `01`-`10`) were updated to these names on 2026-10-17 ([ADR-0009](adr/0009-one-hal-package-structure.md)); only the dated GPIO review record (DESIGN_REVIEW.md) and ADR-0001 to ADR-0004 keep the original names as history. The whole package is described in [HAL_ARCHITECTURE.md](HAL_ARCHITECTURE.md).
 
 ## 10. Design review: problems found while designing
 

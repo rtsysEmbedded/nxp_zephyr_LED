@@ -1,26 +1,27 @@
 @startuml 03_c4_component
 !include <C4/C4_Component>
 
-title Portable GPIO library - C4 Level 3: Components of the run-time library
+title GPIO and I/O-expander modules of the hal package - C4 Level 3
 
 LAYOUT_TOP_DOWN()
 
 Container_Ext(app, "Application", "C++", "Tasks / threads / super-loop")
 
 Container_Boundary(core, "Portable core (no OS includes)") {
-  Component(facade, "GpioSystem", "Facade + Factory", "Two-phase init/start, name -> handle lookup at init only, poll() for bare-metal, owns all ports.")
-  Component(pins, "OutputPin / InputPin", "Value handles", "Stateless: {IGpioPort*, mask, active_low}. No lock, no shadow.")
+  Component(facade, "hal::System", "Facade", "Two-phase init/start in generated order over IComponent* (objects defined by the generated composition root, ADR-0009); name -> handle lookup at init only; poll() for bare-metal.")
+  Component(pins, "OutputPin / InputPin / OpenDrainPin", "Value handles (hal::gpio)", "Stateless: {IGpioPort*, mask, active_low}. No lock, no shadow. Also used by the I2C/SPI bit-bang controllers.")
   Component(disp, "EventDispatcher", "Observer", "Subscription table frozen at start(); diff -> callbacks in task / work / poll context only.")
   Component(iport, "IGpioPort", "Interface (Bridge implementor)", "write_masked, toggle_masked, read, configure, caps(), service().")
   Component(expport, "ExpanderPort", "Port + shadow registers", "Port mutex, shadow out/dir/in, dirty + resync flags, fail-safe handling.")
-  Component(chip, "IExpanderChip", "Strategy", "Pca95xxChip, Mcp23x17Chip, ShiftRegChip: framing + IRQ semantics; register map from generated data.")
-  Component(ibus, "IBus", "Interface (Adapter target)", "transfer(), mutex(): one per physical bus.")
+  Component(chip, "IExpanderChip", "Strategy", "Pca95xxChip, Mcp23x17Chip, ShiftRegChip: register map (generated data) + IRQ semantics.")
+  Component(ibus, "IRegisterDevice", "Interface (hal::regs)", "write_reg / read_reg; bus lock taken inside.")
+  Component(busmods, "I2C / SPI modules", "hal::regs, hal::i2c, hal::spi", "I2c/SpiRegisterDevice over hardware or bit-bang controllers (diagrams 12-14).")
   Component(cfgsrc, "IConfigSource", "Interface", "Generated constexpr tables (MCU) or JSON loader (Linux).")
 }
 
 Container_Boundary(adp, "Platform adapters (exactly one set linked)") {
   Component(native, "Native port", "IGpioPort impl", "McuxGpioPort | ZephyrGpioPort | LinuxGpiodPort")
-  Component(bus, "Bus adapters", "IBus impl", "Mcux I2C/SPI (blocking | FreeRTOS | async) | Zephyr i2c/spi | Linux i2c-dev/spidev")
+  Component(bus, "I2C / SPI hardware controllers", "II2cController / ISpiController impl", "McuxLpi2c, McuxLpspi (blocking | rtos | async), ZephyrI2c, ZephyrSpi, LinuxI2cDev, LinuxSpidev")
   Component(osal, "OSAL", "Link-time selected, no virtual", "Mutex, ScopedLock, CriticalSection, Context, EventSignal, Clock")
 }
 
@@ -28,14 +29,16 @@ Rel(app, facade, "init(), start(), output(name), subscribe()")
 Rel(app, pins, "set(), toggle(), read()")
 Rel(pins, iport, "write_masked / read")
 Rel(facade, cfgsrc, "Reads descriptors")
-Rel(facade, iport, "Creates + owns")
+Rel(facade, iport, "Initialises (init table)")
 Rel(facade, disp, "Owns")
 Rel_U(iport, disp, "Reports changed bits", "from service()")
 Rel(expport, iport, "Implements")
 Rel(native, iport, "Implements")
-Rel(expport, chip, "Delegates encoding")
-Rel(expport, ibus, "Transfers")
-Rel(bus, ibus, "Implements")
+Rel(expport, chip, "Register map + IRQ rules")
+Rel(expport, ibus, "read_reg / write_reg")
+Rel(busmods, ibus, "Implements")
+Rel(busmods, pins, "Bit-bang pins, GPIO chip select")
+Rel(bus, busmods, "Implements controllers for")
 Rel(expport, osal, "Mutex, ScopedLock, Context")
 Rel(native, osal, "CriticalSection, EventSignal")
 Rel(disp, osal, "EventSignal, Context")

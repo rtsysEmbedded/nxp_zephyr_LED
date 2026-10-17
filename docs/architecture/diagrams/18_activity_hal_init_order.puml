@@ -3,7 +3,7 @@
 
 title hal::System initialisation order (dependency graph computed at build time)
 
-partition "Build time: gpio_codegen.py" {
+partition "Build time: hal_codegen.py" {
   start
   :Build dependency graph from JSON:\nbit-bang bus -> its GPIO pins\nSPI device -> its CS pin\ndevice -> its bus\nexpander port -> its device\nexpander pin -> its port;
   if (cycle found?) then (yes)
@@ -14,7 +14,9 @@ partition "Build time: gpio_codegen.py" {
     :Fail build: would nest bus lock\ninside an expander lock (ADR-0007);
     stop
   endif
-  :Emit init table in topological order;
+  :Emit hal_instances.cpp: every component as a
+static object, plus the init table (IComponent*)
+in topological order (composition root, ADR-0009);
 }
 
 partition "Run time: hal::System::init()" {

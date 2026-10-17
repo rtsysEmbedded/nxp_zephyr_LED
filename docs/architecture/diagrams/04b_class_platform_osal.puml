@@ -1,49 +1,36 @@
 @startuml 04b_class_platform_osal
 !include _style.iuml
 
-title Platform adapters and OSAL - realizations per target (UML class diagram, part 2 of 2)
+title GPIO platform adapters, configuration sources and OSAL - realizations per target
 
-package "gpio :: port / bus (interfaces, see part 1)" as ifc {
+package "hal::gpio / hal::config (interfaces, see diagram 04)" as ifc {
   interface IGpioPort <<interface>>
-  interface IBus <<interface>>
   interface IConfigSource <<interface>>
 }
 
-package "adapters/linux" as lx {
+package "hal::platform::linux" as lx {
   class LinuxGpiodPort <<platform>> {
     libgpiod v2 line request
     edge-event reader thread
   }
-  class LinuxI2cDevBus <<platform>> {
-    /dev/i2c-N, ioctl(I2C_RDWR)
-  }
-  class LinuxSpidevBus <<platform>>
   class JsonConfigSource <<platform>> {
-    parses gpio.json at start-up
+    parses hal.json at start-up
   }
 }
 
-package "adapters/zephyr" as zp {
+package "hal::platform::zephyr" as zp {
   class ZephyrGpioPort <<platform>> {
     gpio_dt_spec, gpio_port_set_masked
     gpio_callback -> k_work
   }
-  class ZephyrI2cBus <<platform>> {
-    i2c_dt_spec, i2c_write_read_dt
-  }
-  class ZephyrSpiBus <<platform>>
 }
 
-package "adapters/mcux (FreeRTOS and bare-metal)" as mx {
+package "hal::platform::mcux (FreeRTOS and bare-metal)" as mx {
   class McuxGpioPort <<platform>> {
     fsl_gpio: PSOR / PCOR / PTOR
+    PORT PCR.ODE for open-drain pins
     ISR: clear ISFR, EventSignal
   }
-  class McuxLpi2cBus <<platform>> {
-    mode from config:
-    blocking | freertos | async
-  }
-  class McuxLpspiBus <<platform>>
   class GeneratedConfig <<generated>> {
     constexpr tables in flash
   }
@@ -52,16 +39,10 @@ package "adapters/mcux (FreeRTOS and bare-metal)" as mx {
 LinuxGpiodPort ..|> IGpioPort
 ZephyrGpioPort ..|> IGpioPort
 McuxGpioPort ..|> IGpioPort
-LinuxI2cDevBus ..|> IBus
-LinuxSpidevBus ..|> IBus
-ZephyrI2cBus ..|> IBus
-ZephyrSpiBus ..|> IBus
-McuxLpi2cBus ..|> IBus
-McuxLpspiBus ..|> IBus
 JsonConfigSource ..|> IConfigSource
 GeneratedConfig ..|> IConfigSource
 
-package "osal (one implementation linked; static polymorphism, no virtual)" as os {
+package "hal::osal (one implementation linked; static polymorphism, no virtual)" as os {
   class "osal::Mutex" as Mutex <<osal>> {
     + lock(timeout : Duration) : Error
     + unlock() : void
@@ -89,6 +70,13 @@ ScopedLock --> Mutex
 
 mx -[hidden]down- os
 ifc -[hidden]down- lx
+
+note as BUS
+  I2C and SPI platform adapters (McuxLpi2c, McuxLpspi,
+  ZephyrI2c, ZephyrSpi, LinuxI2cDev, LinuxSpidev) belong to
+  the same hal::platform packages; see diagram 14.
+end note
+BUS .. mx
 
 note as MAP
   <b>OSAL mapping per target</b>

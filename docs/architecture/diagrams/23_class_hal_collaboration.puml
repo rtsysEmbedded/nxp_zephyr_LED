@@ -1,0 +1,104 @@
+@startuml 23_class_hal_collaboration
+!include _style.iuml
+
+title How the modules use each other: composition and association across packages
+
+hide empty members
+
+package "gpio" as gpio {
+  interface IGpioPort <<interface>>
+  class OutputPin <<handle>> {
+    - port_ : IGpioPort*
+    - mask_ : uint32_t
+    + set(level) / toggle()
+  }
+  class InputPin <<handle>> {
+    - port_ : IGpioPort*
+    - mask_ : uint32_t
+    + read()
+  }
+  class OpenDrainPin <<handle>> {
+    - port_ : IGpioPort*
+    - mask_ : uint32_t
+    + release() / drive_low() / read()
+  }
+  class EventDispatcher
+}
+
+package "i2c" as i2c {
+  interface II2cController <<interface>>
+  class BitBangI2c
+  class I2cDevice <<handle>>
+}
+
+package "spi" as spi {
+  interface ISpiController <<interface>>
+  class BitBangSpi
+  class SpiDevice <<handle>>
+  class ChipSelect <<value>>
+}
+
+package "regs" as regs {
+  interface IRegisterDevice <<interface>>
+  class I2cRegisterDevice
+  class SpiRegisterDevice
+}
+
+package "expander" as exp {
+  class ExpanderPort
+  interface IExpanderChip <<interface>>
+}
+
+package "system" as sys {
+  class System <<facade>>
+}
+
+package "core" as core {
+  interface IComponent <<interface>>
+}
+
+OutputPin --> "1" IGpioPort
+InputPin --> "1" IGpioPort
+OpenDrainPin --> "1" IGpioPort
+
+BitBangI2c *-- "2" OpenDrainPin : SCL, SDA
+BitBangSpi *-- "2" OutputPin : SCK, MOSI
+BitBangSpi *-- "1" InputPin : MISO
+ChipSelect o-- "0..1" OutputPin : kind = Gpio
+
+I2cDevice --> "1" II2cController
+SpiDevice --> "1" ISpiController
+SpiDevice *-- "1" ChipSelect
+
+I2cRegisterDevice *-- "1" I2cDevice
+SpiRegisterDevice *-- "1" SpiDevice
+
+ExpanderPort --> "1" IRegisterDevice : bus access
+ExpanderPort --> "1" IExpanderChip : registers + IRQ rules
+ExpanderPort --> "0..1" InputPin : INT line\n(native pin)
+ExpanderPort ..> EventDispatcher
+
+System o-- "*" IComponent : init table\n(topological order)
+
+BitBangI2c ..|> II2cController
+BitBangSpi ..|> ISpiController
+ExpanderPort ..|> IGpioPort
+
+note top of BitBangSpi
+  "SPI in GPIO mode" REUSES the GPIO classes by composition:
+  it HAS OutputPin / InputPin objects and calls set() / read().
+  It does NOT inherit from a GPIO class: a BitBangSpi is an
+  SPI controller, not a GPIO port (Liskov substitution).
+end note
+
+note bottom of ExpanderPort
+  Reports input changes to gpio::EventDispatcher
+  (on_port_changed), like any other IGpioPort.
+  Closes the loop without a package cycle:
+  expander pins are ordinary gpio::OutputPin objects
+  whose port_ points to an ExpanderPort, which reaches
+  the chip through regs -> spi/i2c -> (bit-bang) gpio pins.
+  The build forbids bit-bang pins / chip selects on
+  expander ports (lock hierarchy, ADR-0007).
+end note
+@enduml

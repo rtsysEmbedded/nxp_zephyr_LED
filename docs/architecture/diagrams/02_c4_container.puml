@@ -1,17 +1,17 @@
 @startuml 02_c4_container
 !include <C4/C4_Container>
 
-title Portable GPIO library - C4 Level 2: Containers (build-time and run-time units)
+title Portable HAL - C4 Level 2: Containers (build-time and run-time units)
 
 LAYOUT_LEFT_RIGHT()
 
 Person(dev, "Developer / integrator")
 
-System_Boundary(lib, "Portable GPIO library") {
-  ContainerDb(cfg, "Project configuration", "JSON + JSON Schema", "config/gpio.json (pins, ports, buses, IRQ priorities, task/work-queue settings) and config/chips/*.json (expander register maps). Single source of truth.")
-  Container(codegen, "gpio_codegen", "Python 3", "Schema + semantic validation; emits constexpr C++ tables, Zephyr DT overlay and Kconfig fragment. Fails the build on invalid config.")
-  Container(core, "Portable core", "C++17 static library", "Facade, pin handles, port abstraction, expander logic, event dispatcher. No OS or SDK includes.")
-  Container(adapters, "Platform adapters", "C++17, one set linked per target", "OSAL (mutex, critical section, context, event signal, clock) + native port + bus adapters for Linux | Zephyr | FreeRTOS | bare-metal.")
+System_Boundary(lib, "Portable HAL (package hal)") {
+  ContainerDb(cfg, "Project configuration", "JSON + JSON Schema", "config/hal.json (ports, pins, buses, devices, IRQ priorities, task/work-queue settings) and config/chips/*.json (register maps, SPI framing). Single source of truth.")
+  Container(codegen, "hal_codegen", "Python 3", "Schema + semantic validation, dependency graph and init order; emits constexpr C++ tables, Zephyr DT overlay and Kconfig fragment. Fails the build on invalid config.")
+  Container(core, "Portable modules", "C++17, one CMake target per module", "core, osal (interfaces), config, gpio, i2c, spi, regs, expander, system (diagram 21). No OS or SDK includes.")
+  Container(adapters, "Platform adapters", "C++17, one set linked per target", "hal::platform: OSAL implementations, native GPIO ports, I2C/SPI hardware controllers for Linux | Zephyr | FreeRTOS | bare-metal.")
 }
 
 Container_Ext(app, "Application firmware / process", "C++", "Business logic: LEDs, relays, buttons.")
@@ -19,10 +19,10 @@ System_Ext(platform, "Platform services", "libgpiod v2, Zephyr drivers, FreeRTOS
 
 Rel(dev, cfg, "Edits")
 Rel(codegen, cfg, "Reads + validates")
-Rel(codegen, core, "Generates gpio_config.hpp for", "constexpr tables")
+Rel(codegen, core, "Generates hal_config.hpp for", "constexpr tables + init order")
 Rel(codegen, platform, "Generates overlay / Kconfig fragment for", "Zephyr only")
-Rel(app, core, "Calls", "GpioSystem, OutputPin, InputPin, subscribe()")
-Rel(core, adapters, "Uses through interfaces", "IGpioPort, IBus, osal::*")
+Rel(app, core, "Calls", "hal::System, OutputPin, InputPin, IRegisterDevice, I2cDevice, SpiDevice")
+Rel(core, adapters, "Uses through interfaces", "IGpioPort, II2cController, ISpiController, osal::*")
 Rel(adapters, platform, "Calls")
 
 SHOW_LEGEND()

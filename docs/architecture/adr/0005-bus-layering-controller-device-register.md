@@ -51,5 +51,5 @@ Three different concerns were mixed in `gpio::IBus`:
 ## Consequences
 
 - Sensor and EEPROM drivers reuse the same register layer as the expanders.
-- The GPIO code (not yet written) uses `IRegisterDevice` from the start; the GPIO diagrams `04`/`04b` still show the older name `IBus`, and that name in them means `IRegisterDevice`.
+- The GPIO code (not yet written) uses `IRegisterDevice` from the start. (Updated 2026-10-17: all living documents and diagrams now use the unified names; see [ADR-0009](0009-one-hal-package-structure.md).)
 - MCP23017 (I2C) and MCP23S17 (SPI) share one `IExpanderChip`; only the register device differs.

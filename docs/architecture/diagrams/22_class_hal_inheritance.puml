@@ -1,0 +1,116 @@
+@startuml 22_class_hal_inheritance
+!include _style.iuml
+
+title Complete inheritance hierarchy of the hal package (interfaces and their implementations)
+
+hide empty members
+
+package "core" as core {
+  interface IComponent <<interface>> {
+    + init() : Result<void>
+    + id() : ComponentId
+    + health() : Health
+  }
+}
+
+package "gpio" as gpio {
+  interface IGpioPort <<interface>> {
+    + configure(index, pin) : Result<void>
+    + write_masked(mask, value) : Result<void>
+    + toggle_masked(mask) : Result<void>
+    + read() : Result<uint32_t>
+    + caps() : PortCaps
+    + service() : void
+  }
+}
+
+package "i2c" as i2c {
+  interface II2cController <<interface>> {
+    + transfer(addr, msgs) : Result<void>
+    + recover() : Result<void>
+    + caps() : I2cCaps
+  }
+  class BitBangI2c
+}
+
+package "spi" as spi {
+  interface ISpiController <<interface>> {
+    + configure(cfg) : Result<void>
+    + transfer(segments) : Result<void>
+    + caps() : SpiCaps
+  }
+  class BitBangSpi
+}
+
+package "expander" as exp {
+  class ExpanderPort
+  interface IExpanderChip <<interface>>
+  class Pca95xxChip <<chip>>
+  class Mcp23x17Chip <<chip>>
+  class ShiftRegChip <<chip>>
+}
+
+package "regs" as regs {
+  interface IRegisterDevice <<interface>>
+  class I2cRegisterDevice
+  class SpiRegisterDevice
+  interface ISpiFraming <<interface>>
+  class RwBitFraming <<chip>>
+  class OpcodeFraming <<chip>>
+}
+
+package "platform" as plat {
+  class McuxGpioPort <<platform>>
+  class ZephyrGpioPort <<platform>>
+  class LinuxGpiodPort <<platform>>
+  class McuxLpi2c <<platform>>
+  class ZephyrI2c <<platform>>
+  class LinuxI2cDev <<platform>>
+  class McuxLpspi <<platform>>
+  class ZephyrSpi <<platform>>
+  class LinuxSpidev <<platform>>
+}
+
+' interface inheritance: solid line, hollow triangle
+IGpioPort --|> IComponent
+II2cController --|> IComponent
+ISpiController --|> IComponent
+
+' realization: dashed line, hollow triangle
+McuxGpioPort ..|> IGpioPort
+ZephyrGpioPort ..|> IGpioPort
+LinuxGpiodPort ..|> IGpioPort
+ExpanderPort ..|> IGpioPort
+
+BitBangI2c ..|> II2cController
+McuxLpi2c ..|> II2cController
+ZephyrI2c ..|> II2cController
+LinuxI2cDev ..|> II2cController
+
+BitBangSpi ..|> ISpiController
+McuxLpspi ..|> ISpiController
+ZephyrSpi ..|> ISpiController
+LinuxSpidev ..|> ISpiController
+
+Pca95xxChip ..|> IExpanderChip
+Mcp23x17Chip ..|> IExpanderChip
+ShiftRegChip ..|> IExpanderChip
+
+I2cRegisterDevice ..|> IRegisterDevice
+SpiRegisterDevice ..|> IRegisterDevice
+RwBitFraming ..|> ISpiFraming
+OpcodeFraming ..|> ISpiFraming
+
+note bottom of ExpanderPort
+  An I/O expander IS a GPIO port (inherits IGpioPort):
+  every OutputPin / InputPin works on it unchanged.
+  It is not a bus: it USES a bus (see diagram 23).
+end note
+
+note bottom of IComponent
+  Everything hal::System must initialise in order
+  (ports, controllers, expanders) is an IComponent.
+  Value handles (pins, devices, register devices)
+  are not components: they own no hardware.
+end note
+@enduml

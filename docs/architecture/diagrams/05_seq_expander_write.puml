@@ -5,11 +5,11 @@ title Expander pin write - locking, commit and failure path (RTOS / Linux target
 
 autonumber
 participant "Application task" as app
-participant "OutputPin" as pin
-participant "ExpanderPort" as port
-participant "osal::Mutex\n(port)" as pm
-participant "IBus\n(e.g. McuxLpi2cBus)" as bus
-participant "osal::Mutex\n(bus)" as bm
+participant "gpio::OutputPin" as pin
+participant "expander::ExpanderPort" as port
+participant "osal::Mutex\n(port, level 1)" as pm
+participant "regs::IRegisterDevice\n(I2cRegisterDevice)" as reg
+participant "i2c::I2cDevice +\nII2cController\n(bus lock, level 2)" as ctl
 participant "PCA9555" as chip
 
 app -> pin : set(High)
@@ -20,34 +20,35 @@ alt osal::Context::in_isr() && caps().can_sleep
   port --> pin : Error::IsrContext
   pin --> app : Result{IsrContext}
 else task context
-  port -> pm : ScopedLock(timeout = cfg.port_lock_timeout)
+  port -> pm : ScopedLock(cfg.timeouts.port_lock_ms)
   alt !owns()
     port --> app : Result{Timeout}
-  else lock held
+  else port lock held
     port -> port : next = (shadow_out & ~mask) | (value & mask)
     alt next == shadow_out
       port --> app : Result{Ok} (no bus traffic)
     else state changes
-    port -> bm : ScopedLock(timeout = cfg.bus_lock_timeout)
-    port -> bus : write_reg(OUTPUT0, {lo(next), hi(next)})
-    bus -> chip : I2C START, addr+W, reg, data0, data1, STOP
-    alt ACK
-      chip --> bus : ACK
-      bus --> port : Ok
-      port -> port : shadow_out = next (commit only after HW accepted)
-      port --> app : Result{Ok}
-    else NACK / timeout / arbitration lost
-      bus --> port : Error::Io
-      port -> port : resync_needed = true
-      port --> app : Result{Io}
-      note over port
-        Shadow is NOT updated: it must never claim
-        a state the chip does not have.
-        resync() on next service(): read OUTPUT/CONFIG,
-        re-apply fail-safe if the chip was reset.
-      end note
-    end
-    port -> bm : ~ScopedLock (unlock)
+      port -> reg : write_reg(OUTPUT0, {lo(next), hi(next)})
+      reg -> ctl : write([OUTPUT0, lo, hi])\ntakes bus lock (cfg.timeouts.lock_ms)
+      ctl -> chip : START, addr+W, reg, data0, data1, STOP
+      alt ACK on every byte
+        chip --> ctl : ACK
+        ctl --> reg : Ok (bus lock released)
+        reg --> port : Ok
+        port -> port : shadow_out = next (commit only after HW accepted)
+        port --> app : Result{Ok}
+      else AddrNack | DataNack | Timeout | BusStuck
+        ctl --> reg : error (bus lock released;\nrecovery already done if the bus was stuck)
+        reg --> port : error
+        port -> port : resync_needed = true
+        port --> app : Result{error}
+        note over port
+          Shadow is NOT updated: it must never claim
+          a state the chip does not have.
+          resync() on next service(): read OUTPUT/CONFIG,
+          re-apply fail-safe if the chip was reset.
+        end note
+      end
     end
     port -> pm : ~ScopedLock (unlock, every path)
   end

@@ -1,0 +1,75 @@
+@startuml 24_object_spi_gpio_expander
+!include _style.iuml
+
+title Run-time objects for one example: bit-banged SPI on native GPIO pins drives an MCP23S17 expander
+
+object "gpio_a : McuxGpioPort" as gpio_a {
+  caps.atomic_write = true
+  caps.can_sleep = false
+}
+object "sck : gpio::OutputPin" as sck {
+  port_ = gpio_a
+}
+object "mosi : gpio::OutputPin" as mosi {
+  port_ = gpio_a
+}
+object "miso : gpio::InputPin" as miso {
+  port_ = gpio_a
+}
+object "exp_b_cs : gpio::OutputPin" as cs {
+  port_ = gpio_a
+}
+object "spi_soft : spi::BitBangSpi" as spi {
+  delay = CycleCounterDelay
+}
+object "exp_b_dev : spi::SpiDevice" as dev {
+  mode = 0, bit_order = MSB
+  cs = Gpio(exp_b_cs, active low)
+}
+object "exp_b_regs : regs::SpiRegisterDevice" as regs {
+  framing = OpcodeFraming(hw_address)
+}
+object "exp_b : expander::ExpanderPort" as exp {
+  chip = Mcp23x17Chip
+  caps.can_sleep = true
+}
+object "relay_1 : gpio::OutputPin" as relay {
+  port_ = exp_b
+}
+object "sys : system::System" as sys
+
+sck --> gpio_a
+mosi --> gpio_a
+miso --> gpio_a
+cs --> gpio_a
+spi *-- sck
+spi *-- mosi
+spi *-- miso
+dev --> spi
+dev *-- cs
+regs *-- dev
+exp --> regs
+relay --> exp
+
+sys --> gpio_a : init #1
+sys --> spi : init #3
+sys --> exp : init #5
+
+note right of relay
+  relay_1.set(High):
+  1. exp_b.write_masked()   takes exp_b lock      (level 1)
+  2. exp_b_regs.write_reg() -> exp_b_dev.begin()
+                             takes spi_soft lock   (level 2)
+  3. spi_soft drives exp_b_cs, sck, mosi, reads miso:
+     single PSOR/PCOR stores on gpio_a, no lock
+  4. locks released in reverse order
+  Same OutputPin class for relay_1 (expander pin)
+  and sck (native pin): only port_ differs.
+end note
+
+note bottom of sys
+  Values (pin indices, frequency, mode, hw_address)
+  come from config/hal.json; init numbers follow
+  the generated topological order (ADR-0008).
+end note
+@enduml

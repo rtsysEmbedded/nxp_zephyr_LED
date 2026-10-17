@@ -9,7 +9,7 @@
 | Decisions | [ADR-0001](adr/0001-layering-and-polymorphism.md), [ADR-0002](adr/0002-concurrency-model.md), [ADR-0003](adr/0003-configuration-single-source-json.md), [ADR-0004](adr/0004-expander-driver-selection.md) |
 | Diagrams | [diagrams/](diagrams/) (PlantUML sources, index in section 10) |
 
-> **Amended 2026-10-17 by the I2C/SPI design** ([BUS_DESIGN.md](BUS_DESIGN.md) section 9): `IBus` is replaced by `hal::IRegisterDevice`, `GpioSystem` by `hal::System`, and the lock hierarchy is extended to buses. Names in this document are kept as originally reviewed.
+> **Amended 2026-10-17 by the I2C/SPI design** ([BUS_DESIGN.md](BUS_DESIGN.md) section 9): `IBus` is replaced by `hal::IRegisterDevice`, `GpioSystem` by `hal::System`, and the lock hierarchy is extended to buses. Names in this document are kept as originally reviewed; the current names and the complete package structure are in [HAL_ARCHITECTURE.md](HAL_ARCHITECTURE.md) (name map in section 9).
 
 ---
 

@@ -8,7 +8,7 @@ LAYOUT_TOP_DOWN()
 Container_Ext(app, "Application and chip drivers", "C++", "ExpanderPort, sensor drivers, EEPROM driver")
 
 Container_Boundary(core, "Portable core (no OS includes)") {
-  Component(sys, "hal::System", "Facade + Factory", "Builds GPIO ports, buses, devices and expanders from configuration in dependency order.")
+  Component(sys, "hal::System", "Facade", "Initialises all components in the generated order; objects are defined by the generated composition root (hal_instances.cpp, ADR-0009).")
   Component(regdev, "RegisterDevice", "Adapter + Strategy", "Register read/write over one device; framing strategy (I2C reg8/reg16, SPI R/W-bit, SPI opcode).")
   Component(i2cdev, "I2cDevice", "Value object + RAII transaction", "7-bit address; write, read, write_read; Transaction holds the bus lock.")
   Component(spidev, "SpiDevice", "Value object + RAII transaction", "Chip select (hardware index or GPIO pin), mode 0-3, speed, bit order, word size.")

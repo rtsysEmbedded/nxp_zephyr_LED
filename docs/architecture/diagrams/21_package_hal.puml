@@ -1,0 +1,82 @@
+@startuml 21_package_hal
+!include _style.iuml
+
+title One package "hal": modules and allowed dependencies (UML package diagram)
+
+skinparam packageStyle folder
+
+package "hal (portable, no OS or SDK includes)" as hal {
+  package "core\nResult, Error, IComponent,\nDuration, ComponentId" as core {
+  }
+  package "osal\nMutex, ScopedLock, CriticalSection,\nContext, EventSignal, Clock" as osal {
+  }
+  package "config\nIConfigSource, descriptors" as config {
+  }
+  package "gpio\nIGpioPort, OutputPin, InputPin,\nOpenDrainPin, EventDispatcher" as gpio {
+  }
+  package "i2c\nII2cController, I2cDevice,\nI2cTransaction, BitBangI2c" as i2c {
+  }
+  package "spi\nISpiController, SpiDevice,\nSpiTransaction, BitBangSpi" as spi {
+  }
+  package "regs\nIRegisterDevice, I2c/SpiRegisterDevice,\nISpiFraming" as regs {
+  }
+  package "expander\nExpanderPort, IExpanderChip,\nPca95xx, Mcp23x17, ShiftReg" as exp {
+  }
+  package "system\nhal::System (facade, init table)" as sys {
+  }
+}
+
+package "generated per build (composition root)\nhal_config.hpp, hal_instances.cpp" as gen {
+}
+
+package "hal::platform (exactly one set linked per build)" as plat {
+  package "mcux" as mcux {
+  }
+  package "zephyr" as zep {
+  }
+  package "linux" as lin {
+  }
+  package "host (tests)" as host {
+  }
+}
+
+osal ..> core
+config ..> core
+gpio ..> core
+gpio ..> osal
+i2c ..> gpio : bit-bang pins\n(OpenDrainPin)
+i2c ..> osal
+spi ..> gpio : chip select +\nbit-bang pins
+spi ..> osal
+regs ..> i2c
+regs ..> spi
+exp ..> gpio : implements\nIGpioPort
+exp ..> regs : uses\nIRegisterDevice
+sys ..> gpio : handles
+sys ..> regs : handles
+sys ..> config
+
+gen ..> sys : IComponent* table
+gen ..> exp : static objects
+gen ..> plat : static objects
+
+plat ..> gpio : implements IGpioPort
+plat ..> i2c : implements II2cController
+plat ..> spi : implements ISpiController
+plat ..> osal : implements OSAL
+
+note right of hal
+  Rules (enforced: one CMake target per module,
+  target_link_libraries = arrows of this diagram):
+  1. Arrows point only downwards: no cycles.
+  2. A module may use only what it points to
+     (transitively).
+  3. Lower modules define interfaces; higher modules
+     implement or use them (dependency inversion):
+     gpio defines IGpioPort, expander implements it.
+  4. platform adapters depend on module interfaces,
+     never the other way round.
+  5. Only the generated composition root names
+     platform classes; system sees IComponent* only.
+end note
+@enduml
